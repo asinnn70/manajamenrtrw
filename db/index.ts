@@ -1,13 +1,13 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import { createClient } from '@libsql/client';
 
-const dbPath = path.join(process.cwd(), 'rtrw.db');
-const db = new Database(dbPath);
+export const db = createClient({
+  url: process.env.TURSO_DATABASE_URL || "libsql://dbrtrw-vercel-icfg-gitcn1w4pfupzkiukiwvtlpt.aws-us-east-1.turso.io",
+  authToken: process.env.TURSO_AUTH_TOKEN || "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzE5ODU3NjAsImlkIjoiMDE5YzkyOTQtZjEwMS03ZTkxLWI4MWUtYjJlOWU2MWEzMjIwIiwicmlkIjoiZjU3NWQ3ZjMtODU5My00OTFjLWJmYjAtODMyOTkzMjczOTkwIn0.2fAcsvtrzxk9A4aM7qyo67KQXvC8JseauBbKO2nV72kz4dnmjfq28dqz5KlmJFTlw0NXgQ0j_ioLESUVops2Aw",
+});
 
-export function initDb() {
+export async function initDb() {
   // Create Residents Table
-  db.exec(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS residents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -26,29 +26,30 @@ export function initDb() {
 
   // Migration for existing tables
   try {
-    const columns = db.prepare("PRAGMA table_info(residents)").all() as any[];
+    const columnsResult = await db.execute("PRAGMA table_info(residents)");
+    const columns = columnsResult.rows;
     const hasGender = columns.some(c => c.name === 'gender');
     const hasFamilyRelationship = columns.some(c => c.name === 'familyRelationship');
     const hasFamilyCardNumber = columns.some(c => c.name === 'familyCardNumber');
     
     if (!hasGender) {
-      db.exec("ALTER TABLE residents ADD COLUMN gender TEXT DEFAULT 'Laki-laki'");
-      db.exec("ALTER TABLE residents ADD COLUMN maritalStatus TEXT DEFAULT 'Lajang'");
+      await db.execute("ALTER TABLE residents ADD COLUMN gender TEXT DEFAULT 'Laki-laki'");
+      await db.execute("ALTER TABLE residents ADD COLUMN maritalStatus TEXT DEFAULT 'Lajang'");
     }
     
     if (!hasFamilyRelationship) {
-      db.exec("ALTER TABLE residents ADD COLUMN familyRelationship TEXT DEFAULT 'Kepala Keluarga'");
+      await db.execute("ALTER TABLE residents ADD COLUMN familyRelationship TEXT DEFAULT 'Kepala Keluarga'");
     }
 
     if (!hasFamilyCardNumber) {
-      db.exec("ALTER TABLE residents ADD COLUMN familyCardNumber TEXT");
+      await db.execute("ALTER TABLE residents ADD COLUMN familyCardNumber TEXT");
     }
   } catch (error) {
     console.error("Migration failed:", error);
   }
 
   // Create Announcements Table
-  db.exec(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS announcements (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -58,7 +59,7 @@ export function initDb() {
   `);
 
   // Create Letters Table
-  db.exec(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS letters (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       type TEXT NOT NULL,
@@ -71,18 +72,19 @@ export function initDb() {
 
   // Migration for existing tables
   try {
-    const columns = db.prepare("PRAGMA table_info(letters)").all() as any[];
+    const columnsResult = await db.execute("PRAGMA table_info(letters)");
+    const columns = columnsResult.rows;
     const hasContent = columns.some(c => c.name === 'content');
     
     if (!hasContent) {
-      db.exec("ALTER TABLE letters ADD COLUMN content TEXT");
+      await db.execute("ALTER TABLE letters ADD COLUMN content TEXT");
     }
   } catch (error) {
     console.error("Migration for letters failed:", error);
   }
 
   // Create Mutations Table
-  db.exec(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS mutations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       residentId INTEGER NOT NULL,
@@ -94,7 +96,7 @@ export function initDb() {
   `);
 
   // Create Transactions Table
-  db.exec(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       type TEXT NOT NULL,
@@ -106,7 +108,7 @@ export function initDb() {
   `);
 
   // Create Reports Table
-  db.exec(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS reports (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       residentId INTEGER NOT NULL,
@@ -119,13 +121,9 @@ export function initDb() {
   `);
 
   // Seed data if empty
-  const count = db.prepare('SELECT count(*) as count FROM residents').get() as { count: number };
-  if (count.count === 0) {
-    const insert = db.prepare(`
-      INSERT INTO residents (name, nik, address, rt, rw, status, phone, gender, maritalStatus)
-      VALUES (@name, @nik, @address, @rt, @rw, @status, @phone, @gender, @maritalStatus)
-    `);
-
+  const countResult = await db.execute('SELECT count(*) as count FROM residents');
+  const count = countResult.rows[0].count as number;
+  if (count === 0) {
     const seedData = [
       { name: "Warga 1", nik: "0000-1", address: "Jl. Mawar No. 10", rt: "01", rw: "05", status: "Tetap", phone: "081234567890", gender: "Laki-laki", maritalStatus: "Menikah" },
       { name: "Warga 2", nik: "0000-2", address: "Jl. Melati No. 5", rt: "02", rw: "05", status: "Tetap", phone: "081234567891", gender: "Perempuan", maritalStatus: "Menikah" },
@@ -134,7 +132,13 @@ export function initDb() {
       { name: "Warga 5", nik: "0000-5", address: "Jl. Kenanga No. 8", rt: "02", rw: "05", status: "Kost", phone: "081234567894", gender: "Laki-laki", maritalStatus: "Lajang" },
     ];
 
-    seedData.forEach(resident => insert.run(resident));
+    for (const resident of seedData) {
+      await db.execute({
+        sql: `INSERT INTO residents (name, nik, address, rt, rw, status, phone, gender, maritalStatus)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [resident.name, resident.nik, resident.address, resident.rt, resident.rw, resident.status, resident.phone, resident.gender, resident.maritalStatus]
+      });
+    }
     console.log('Database seeded with initial data');
   }
 }

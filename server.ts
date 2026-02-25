@@ -10,25 +10,28 @@ async function startServer() {
   const PORT = 3000;
 
   // Initialize Database
-  initDb();
+  await initDb();
 
   app.use(express.json());
 
   // API Routes
-  app.get("/api/residents", (req, res) => {
+  app.get("/api/residents", async (req, res) => {
     try {
-      const stmt = db.prepare('SELECT * FROM residents ORDER BY id DESC');
-      const residents = stmt.all();
-      res.json(residents);
+      const result = await db.execute('SELECT * FROM residents ORDER BY id DESC');
+      res.json(result.rows);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch residents" });
     }
   });
 
-  app.get("/api/residents/:id/family", (req, res) => {
+  app.get("/api/residents/:id/family", async (req, res) => {
     try {
       const { id } = req.params;
-      const resident = db.prepare('SELECT * FROM residents WHERE id = ?').get(id) as any;
+      const residentResult = await db.execute({
+        sql: 'SELECT * FROM residents WHERE id = ?',
+        args: [id]
+      });
+      const resident = residentResult.rows[0] as any;
       
       if (!resident) {
         return res.status(404).json({ error: "Resident not found" });
@@ -38,27 +41,32 @@ async function startServer() {
         return res.json([]);
       }
 
-      const familyMembers = db.prepare('SELECT * FROM residents WHERE familyCardNumber = ? AND id != ?').all(resident.familyCardNumber, id);
-      res.json(familyMembers);
+      const familyMembersResult = await db.execute({
+        sql: 'SELECT * FROM residents WHERE familyCardNumber = ? AND id != ?',
+        args: [resident.familyCardNumber, id]
+      });
+      res.json(familyMembersResult.rows);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch family members" });
     }
   });
 
-  app.post("/api/residents/:id/mutate", (req, res) => {
+  app.post("/api/residents/:id/mutate", async (req, res) => {
     try {
       const { id } = req.params;
       const { type, date, details } = req.body;
       
-      const mutationStmt = db.prepare('INSERT INTO mutations (residentId, type, date, details) VALUES (?, ?, ?, ?)');
-      const updateResidentStmt = db.prepare('UPDATE residents SET status = ? WHERE id = ?');
+      await db.batch([
+        {
+          sql: 'INSERT INTO mutations (residentId, type, date, details) VALUES (?, ?, ?, ?)',
+          args: [id, type, date, details]
+        },
+        {
+          sql: 'UPDATE residents SET status = ? WHERE id = ?',
+          args: [type, id]
+        }
+      ], 'write');
       
-      const transaction = db.transaction(() => {
-        mutationStmt.run(id, type, date, details);
-        updateResidentStmt.run(type, id);
-      });
-      
-      transaction();
       res.json({ message: "Resident status updated successfully" });
     } catch (error) {
       console.error("Mutation failed:", error);
@@ -66,33 +74,37 @@ async function startServer() {
     }
   });
 
-  app.post("/api/residents", (req, res) => {
+  app.post("/api/residents", async (req, res) => {
     try {
       const { name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber } = req.body;
-      const stmt = db.prepare(`
-        INSERT INTO residents (name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      const info = stmt.run(name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber);
-      res.json({ id: info.lastInsertRowid, ...req.body });
+      const result = await db.execute({
+        sql: `
+          INSERT INTO residents (name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        args: [name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber]
+      });
+      res.json({ id: result.lastInsertRowid, ...req.body });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to create resident" });
     }
   });
 
-  app.put("/api/residents/:id", (req, res) => {
+  app.put("/api/residents/:id", async (req, res) => {
     try {
       const { id } = req.params;
       const { name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber } = req.body;
-      const stmt = db.prepare(`
-        UPDATE residents 
-        SET name = ?, nik = ?, address = ?, rt = ?, rw = ?, status = ?, phone = ?, gender = ?, maritalStatus = ?, familyRelationship = ?, familyCardNumber = ?
-        WHERE id = ?
-      `);
-      const info = stmt.run(name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber, id);
+      const result = await db.execute({
+        sql: `
+          UPDATE residents 
+          SET name = ?, nik = ?, address = ?, rt = ?, rw = ?, status = ?, phone = ?, gender = ?, maritalStatus = ?, familyRelationship = ?, familyCardNumber = ?
+          WHERE id = ?
+        `,
+        args: [name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber, id]
+      });
       
-      if (info.changes > 0) {
+      if (result.rowsAffected > 0) {
         res.json({ message: "Resident updated successfully", id, ...req.body });
       } else {
         res.status(404).json({ error: "Resident not found" });
@@ -104,79 +116,84 @@ async function startServer() {
   });
 
   // Announcements Routes
-  app.get("/api/announcements", (req, res) => {
+  app.get("/api/announcements", async (req, res) => {
     try {
-      const stmt = db.prepare('SELECT * FROM announcements ORDER BY id DESC');
-      const announcements = stmt.all();
-      res.json(announcements);
+      const result = await db.execute('SELECT * FROM announcements ORDER BY id DESC');
+      res.json(result.rows);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch announcements" });
     }
   });
 
-  app.post("/api/announcements", (req, res) => {
+  app.post("/api/announcements", async (req, res) => {
     try {
       const { title, date, content } = req.body;
-      const stmt = db.prepare('INSERT INTO announcements (title, date, content) VALUES (?, ?, ?)');
-      const info = stmt.run(title, date, content);
-      res.json({ id: info.lastInsertRowid, ...req.body });
+      const result = await db.execute({
+        sql: 'INSERT INTO announcements (title, date, content) VALUES (?, ?, ?)',
+        args: [title, date, content]
+      });
+      res.json({ id: result.lastInsertRowid, ...req.body });
     } catch (error) {
       res.status(500).json({ error: "Failed to create announcement" });
     }
   });
 
   // Transactions Routes
-  app.get("/api/transactions", (req, res) => {
+  app.get("/api/transactions", async (req, res) => {
     try {
-      const stmt = db.prepare('SELECT * FROM transactions ORDER BY date DESC, id DESC');
-      const transactions = stmt.all();
-      res.json(transactions);
+      const result = await db.execute('SELECT * FROM transactions ORDER BY date DESC, id DESC');
+      res.json(result.rows);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch transactions" });
     }
   });
 
-  app.post("/api/transactions", (req, res) => {
+  app.post("/api/transactions", async (req, res) => {
     try {
       const { type, amount, date, description, category } = req.body;
-      const stmt = db.prepare('INSERT INTO transactions (type, amount, date, description, category) VALUES (?, ?, ?, ?, ?)');
-      const info = stmt.run(type, amount, date, description, category);
-      res.json({ id: info.lastInsertRowid, ...req.body });
+      const result = await db.execute({
+        sql: 'INSERT INTO transactions (type, amount, date, description, category) VALUES (?, ?, ?, ?, ?)',
+        args: [type, amount, date, description, category]
+      });
+      res.json({ id: result.lastInsertRowid, ...req.body });
     } catch (error) {
       res.status(500).json({ error: "Failed to create transaction" });
     }
   });
 
   // Letters Routes
-  app.get("/api/letters", (req, res) => {
+  app.get("/api/letters", async (req, res) => {
     try {
-      const stmt = db.prepare('SELECT * FROM letters ORDER BY id DESC');
-      const letters = stmt.all();
-      res.json(letters);
+      const result = await db.execute('SELECT * FROM letters ORDER BY id DESC');
+      res.json(result.rows);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch letters" });
     }
   });
 
-  app.post("/api/letters", (req, res) => {
+  app.post("/api/letters", async (req, res) => {
     try {
       const { type, resident, date, status, content } = req.body;
-      const stmt = db.prepare('INSERT INTO letters (type, resident, date, status, content) VALUES (?, ?, ?, ?, ?)');
-      const info = stmt.run(type, resident, date, status, content);
-      res.json({ id: info.lastInsertRowid, ...req.body });
+      const result = await db.execute({
+        sql: 'INSERT INTO letters (type, resident, date, status, content) VALUES (?, ?, ?, ?, ?)',
+        args: [type, resident, date, status, content]
+      });
+      res.json({ id: result.lastInsertRowid, ...req.body });
     } catch (error) {
       res.status(500).json({ error: "Failed to create letter" });
     }
   });
 
-  app.patch("/api/letters/:id/status", (req, res) => {
+  app.patch("/api/letters/:id/status", async (req, res) => {
     try {
       const { id } = req.params;
       const { status } = req.body;
-      const stmt = db.prepare('UPDATE letters SET status = ? WHERE id = ?');
-      const info = stmt.run(status, id);
+      const result = await db.execute({
+        sql: 'UPDATE letters SET status = ? WHERE id = ?',
+        args: [status, id]
+      });
       
-      if (info.changes > 0) {
+      if (result.rowsAffected > 0) {
         res.json({ message: "Letter status updated successfully" });
       } else {
         res.status(404).json({ error: "Letter not found" });
@@ -187,40 +204,43 @@ async function startServer() {
   });
 
   // Reports Route
-  app.get("/api/reports", (req, res) => {
+  app.get("/api/reports", async (req, res) => {
     try {
-      const stmt = db.prepare(`
+      const result = await db.execute(`
         SELECT reports.*, residents.name as residentName 
         FROM reports 
         JOIN residents ON reports.residentId = residents.id 
         ORDER BY reports.id DESC
       `);
-      const reports = stmt.all();
-      res.json(reports);
+      res.json(result.rows);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch reports" });
     }
   });
 
-  app.post("/api/reports", (req, res) => {
+  app.post("/api/reports", async (req, res) => {
     try {
       const { residentId, title, description, date } = req.body;
-      const stmt = db.prepare('INSERT INTO reports (residentId, title, description, date) VALUES (?, ?, ?, ?)');
-      const info = stmt.run(residentId, title, description, date);
-      res.json({ id: info.lastInsertRowid, ...req.body, status: 'Menunggu' });
+      const result = await db.execute({
+        sql: 'INSERT INTO reports (residentId, title, description, date) VALUES (?, ?, ?, ?)',
+        args: [residentId, title, description, date]
+      });
+      res.json({ id: result.lastInsertRowid, ...req.body, status: 'Menunggu' });
     } catch (error) {
       res.status(500).json({ error: "Failed to create report" });
     }
   });
 
-  app.patch("/api/reports/:id/status", (req, res) => {
+  app.patch("/api/reports/:id/status", async (req, res) => {
     try {
       const { id } = req.params;
       const { status } = req.body;
-      const stmt = db.prepare('UPDATE reports SET status = ? WHERE id = ?');
-      const info = stmt.run(status, id);
+      const result = await db.execute({
+        sql: 'UPDATE reports SET status = ? WHERE id = ?',
+        args: [status, id]
+      });
       
-      if (info.changes > 0) {
+      if (result.rowsAffected > 0) {
         res.json({ message: "Report status updated successfully" });
       } else {
         res.status(404).json({ error: "Report not found" });
@@ -231,10 +251,10 @@ async function startServer() {
   });
 
   // Export Route
-  app.get("/api/reports/download", (req, res) => {
+  app.get("/api/reports/download", async (req, res) => {
     try {
-      const stmt = db.prepare('SELECT * FROM residents');
-      const residents = stmt.all() as any[];
+      const result = await db.execute('SELECT * FROM residents');
+      const residents = result.rows as any[];
       
       const csvHeader = "ID,Name,NIK,Address,RT,RW,Status,Phone,Gender,MaritalStatus,FamilyRelationship,FamilyCardNumber\n";
       const csvRows = residents.map(r => 
@@ -254,14 +274,15 @@ async function startServer() {
     }
   });
 
-  app.get("/api/db-status", (req, res) => {
+  app.get("/api/db-status", async (req, res) => {
     try {
-      const residentCount = db.prepare('SELECT count(*) as count FROM residents').get() as { count: number };
+      const result = await db.execute('SELECT count(*) as count FROM residents');
+      const count = result.rows[0].count as number;
       res.json({
         status: "Connected",
-        type: "SQLite",
-        residentCount: residentCount.count,
-        location: "Local (rtrw.db)"
+        type: "Turso (libSQL)",
+        residentCount: count,
+        location: "Remote (Turso)"
       });
     } catch (error) {
       res.status(500).json({ status: "Error", error: String(error) });
@@ -269,24 +290,15 @@ async function startServer() {
   });
 
   app.get("/api/backup", (req, res) => {
-    try {
-      const dbPath = path.join(process.cwd(), 'rtrw.db');
-      if (fs.existsSync(dbPath)) {
-        res.download(dbPath, `rtrw_backup_${new Date().toISOString().split('T')[0]}.db`);
-      } else {
-        res.status(404).json({ error: "Database file not found" });
-      }
-    } catch (error) {
-      console.error("Backup failed:", error);
-      res.status(500).json({ error: "Backup failed" });
-    }
+    // Backup is not supported for remote database in this way
+    res.status(400).json({ error: "Backup is not supported for remote database" });
   });
 
-  app.post("/api/reset", (req, res) => {
+  app.post("/api/reset", async (req, res) => {
     try {
-      db.exec('DELETE FROM residents');
+      await db.execute('DELETE FROM residents');
       // Reset auto-increment
-      db.exec('DELETE FROM sqlite_sequence WHERE name="residents"');
+      await db.execute('DELETE FROM sqlite_sequence WHERE name="residents"');
       res.json({ message: "Database reset successfully" });
     } catch (error) {
       console.error("Reset failed:", error);
@@ -294,23 +306,23 @@ async function startServer() {
     }
   });
 
-  app.post("/api/residents/import", (req, res) => {
+  app.post("/api/residents/import", async (req, res) => {
     try {
       const residents = req.body;
       if (!Array.isArray(residents)) {
         return res.status(400).json({ error: "Invalid data format. Expected an array." });
       }
 
-      const insert = db.prepare(`
-        INSERT INTO residents (name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber)
-        VALUES (@name, @nik, @address, @rt, @rw, @status, @phone, @gender, @maritalStatus, @familyRelationship, @familyCardNumber)
-      `);
+      const statements = residents.map(resident => ({
+        sql: `
+          INSERT INTO residents (name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        args: [resident.name, resident.nik, resident.address, resident.rt, resident.rw, resident.status, resident.phone, resident.gender, resident.maritalStatus, resident.familyRelationship, resident.familyCardNumber]
+      }));
 
-      const insertMany = db.transaction((data) => {
-        for (const resident of data) insert.run(resident);
-      });
+      await db.batch(statements, 'write');
 
-      insertMany(residents);
       res.json({ message: `Successfully imported ${residents.length} residents` });
     } catch (error) {
       console.error("Import failed:", error);
