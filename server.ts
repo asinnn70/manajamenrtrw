@@ -1,6 +1,5 @@
 import express from "express";
-import { initDb } from "./db/index";
-import db from "./db/index";
+import { initDb, db, getDbConfig, updateDbConfig } from "./db/index";
 import path from "path";
 import fs from "fs";
 
@@ -13,6 +12,26 @@ initDb().catch(console.error);
 app.use(express.json());
 
 // API Routes
+  app.get("/api/db-config", (req, res) => {
+    res.json(getDbConfig());
+  });
+
+  app.post("/api/db-config", async (req, res) => {
+    try {
+      const { url, authToken } = req.body;
+      if (!url || !authToken) {
+        return res.status(400).json({ error: "URL and Auth Token are required" });
+      }
+      updateDbConfig({ url, authToken });
+      // Re-initialize database tables if needed
+      await initDb();
+      res.json({ message: "Database configuration updated successfully" });
+    } catch (error) {
+      console.error("Failed to update DB config:", error);
+      res.status(500).json({ error: "Failed to update database configuration" });
+    }
+  });
+
   app.get("/api/residents", async (req, res) => {
     try {
       const result = await db.execute('SELECT * FROM residents ORDER BY id DESC');

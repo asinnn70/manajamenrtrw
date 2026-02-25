@@ -11,7 +11,9 @@ interface DbStatus {
 
 export function Settings() {
   const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
+  const [dbConfig, setDbConfig] = useState({ url: '', authToken: '' });
   const [loading, setLoading] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchStatus = async () => {
@@ -42,9 +44,44 @@ export function Settings() {
     }
   };
 
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch('/api/db-config');
+      const data = await res.json();
+      setDbConfig(data);
+    } catch (error) {
+      console.error("Failed to fetch DB config", error);
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
+    fetchConfig();
   }, []);
+
+  const handleSaveConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingConfig(true);
+    try {
+      const res = await fetch('/api/db-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dbConfig)
+      });
+      if (res.ok) {
+        alert("Konfigurasi database berhasil diperbarui.");
+        fetchStatus();
+      } else {
+        const error = await res.json();
+        alert(`Gagal memperbarui konfigurasi: ${error.error}`);
+      }
+    } catch (error) {
+      console.error("Save config failed:", error);
+      alert("Terjadi kesalahan saat menyimpan konfigurasi.");
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   const handleBackup = () => {
     window.location.href = '/api/backup';
@@ -196,6 +233,45 @@ export function Settings() {
             </p>
           </div>
         </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+          <Database className="text-indigo-600" size={24} />
+          Konfigurasi Turso (libSQL)
+        </h3>
+        <form onSubmit={handleSaveConfig} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Database URL</label>
+            <input 
+              type="text" 
+              value={dbConfig.url}
+              onChange={(e) => setDbConfig({ ...dbConfig, url: e.target.value })}
+              placeholder="libsql://your-db.turso.io"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Auth Token</label>
+            <input 
+              type="password" 
+              value={dbConfig.authToken}
+              onChange={(e) => setDbConfig({ ...dbConfig, authToken: e.target.value })}
+              placeholder="Turso Auth Token"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              required
+            />
+          </div>
+          <button 
+            type="submit"
+            disabled={savingConfig}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+          >
+            <Save size={18} />
+            {savingConfig ? "Menyimpan..." : "Simpan Konfigurasi"}
+          </button>
+        </form>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">

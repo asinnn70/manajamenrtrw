@@ -1,9 +1,40 @@
-import { createClient } from '@libsql/client';
+import { createClient, Client } from '@libsql/client';
+import fs from 'fs';
+import path from 'path';
 
-export const db = createClient({
-  url: process.env.TURSO_DATABASE_URL || "libsql://dbrtrw-vercel-icfg-gitcn1w4pfupzkiukiwvtlpt.aws-us-east-1.turso.io",
-  authToken: process.env.TURSO_AUTH_TOKEN || "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzE5ODU3NjAsImlkIjoiMDE5YzkyOTQtZjEwMS03ZTkxLWI4MWUtYjJlOWU2MWEzMjIwIiwicmlkIjoiZjU3NWQ3ZjMtODU5My00OTFjLWJmYjAtODMyOTkzMjczOTkwIn0.2fAcsvtrzxk9A4aM7qyo67KQXvC8JseauBbKO2nV72kz4dnmjfq28dqz5KlmJFTlw0NXgQ0j_ioLESUVops2Aw",
-});
+const CONFIG_PATH = path.join(process.cwd(), 'db-config.json');
+
+export interface DbConfig {
+  url: string;
+  authToken: string;
+}
+
+function getInitialConfig(): DbConfig {
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    } catch (e) {
+      console.error("Failed to read db-config.json", e);
+    }
+  }
+  return {
+    url: process.env.TURSO_DATABASE_URL || "libsql://dbrtrw-vercel-icfg-gitcn1w4pfupzkiukiwvtlpt.aws-us-east-1.turso.io",
+    authToken: process.env.TURSO_AUTH_TOKEN || "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzE5ODU3NjAsImlkIjoiMDE5YzkyOTQtZjEwMS03ZTkxLWI4MWUtYjJlOWU2MWEzMjIwIiwicmlkIjoiZjU3NWQ3ZjMtODU5My00OTFjLWJmYjAtODMyOTkzMjczOTkwIn0.2fAcsvtrzxk9A4aM7qyo67KQXvC8JseauBbKO2nV72kz4dnmjfq28dqz5KlmJFTlw0NXgQ0j_ioLESUVops2Aw",
+  };
+}
+
+let currentConfig = getInitialConfig();
+export let db = createClient(currentConfig);
+
+export function updateDbConfig(config: DbConfig) {
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+  currentConfig = config;
+  db = createClient(currentConfig);
+}
+
+export function getDbConfig(): DbConfig {
+  return currentConfig;
+}
 
 export async function initDb() {
   // Create Residents Table
@@ -148,5 +179,3 @@ export async function initDb() {
     console.log('Database seeded with initial data');
   }
 }
-
-export default db;
