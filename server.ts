@@ -1,20 +1,18 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import { initDb } from "./db/index";
 import db from "./db/index";
 import path from "path";
 import fs from "fs";
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+const PORT = 3000;
 
-  // Initialize Database
-  await initDb();
+// Initialize Database
+initDb().catch(console.error);
 
-  app.use(express.json());
+app.use(express.json());
 
-  // API Routes
+// API Routes
   app.get("/api/residents", async (req, res) => {
     try {
       const result = await db.execute('SELECT * FROM residents ORDER BY id DESC');
@@ -332,19 +330,23 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
+    import("vite").then(({ createServer: createViteServer }) => {
+      createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      }).then(vite => {
+        app.use(vite.middlewares);
+      });
     });
-    app.use(vite.middlewares);
   } else {
     // Production static file serving would go here
     app.use(express.static('dist'));
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
+  if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 
-startServer();
+export default app;
