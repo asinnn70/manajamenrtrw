@@ -1,0 +1,5 @@
+{
+  "name": "Sistem Manajemen RT/RW",
+  "description": "A comprehensive management system for Indonesian Rukun Tetangga (RT) and Rukun Warga (RW) communities, featuring resident data management, financial tracking, and administrative services.",
+  "requestFramePermissions": []
+}
