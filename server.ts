@@ -274,8 +274,18 @@ app.use(express.json());
 
   app.get("/api/db-status", async (req, res) => {
     try {
+      console.log("Checking database status...");
       const result = await db.execute('SELECT count(*) as count FROM residents');
-      const count = result.rows[0].count as number;
+      console.log("Database query successful:", result.rows[0]);
+      
+      // Handle different possible return types for count
+      let count = 0;
+      const row = result.rows[0];
+      if (row) {
+        const rawCount = row.count || row[0];
+        count = typeof rawCount === 'bigint' ? Number(rawCount) : Number(rawCount || 0);
+      }
+
       res.json({
         status: "Connected",
         type: "Turso (libSQL)",
@@ -283,7 +293,12 @@ app.use(express.json());
         location: "Remote (Turso)"
       });
     } catch (error) {
-      res.status(500).json({ status: "Error", error: String(error) });
+      console.error("Database status check failed:", error);
+      res.status(500).json({ 
+        status: "Error", 
+        error: String(error),
+        message: "Gagal terhubung ke database Turso. Pastikan URL dan Token benar."
+      });
     }
   });
 

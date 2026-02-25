@@ -19,9 +19,24 @@ export function Settings() {
     try {
       const res = await fetch('/api/db-status');
       const data = await res.json();
-      setDbStatus(data);
+      if (res.ok) {
+        setDbStatus(data);
+      } else {
+        setDbStatus({
+          status: 'Error',
+          type: data.type || 'Unknown',
+          residentCount: 0,
+          location: data.message || 'Gagal terhubung ke database'
+        });
+      }
     } catch (error) {
       console.error("Failed to fetch DB status", error);
+      setDbStatus({
+        status: 'Error',
+        type: '-',
+        residentCount: 0,
+        location: 'Terjadi kesalahan koneksi'
+      });
     } finally {
       setLoading(false);
     }

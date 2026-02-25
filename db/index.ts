@@ -122,7 +122,13 @@ export async function initDb() {
 
   // Seed data if empty
   const countResult = await db.execute('SELECT count(*) as count FROM residents');
-  const count = countResult.rows[0].count as number;
+  const row = countResult.rows[0];
+  let count = 0;
+  if (row) {
+    const rawCount = row.count || row[0];
+    count = typeof rawCount === 'bigint' ? Number(rawCount) : Number(rawCount || 0);
+  }
+
   if (count === 0) {
     const seedData = [
       { name: "Warga 1", nik: "0000-1", address: "Jl. Mawar No. 10", rt: "01", rw: "05", status: "Tetap", phone: "081234567890", gender: "Laki-laki", maritalStatus: "Menikah" },
