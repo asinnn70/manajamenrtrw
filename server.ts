@@ -27,10 +27,30 @@ async function startServer() {
       if (!url || !authToken) {
         return res.status(400).json({ error: "URL and Auth Token are required" });
       }
+      
       updateDbConfig({ url, authToken });
+      
+      // Test the connection immediately
+      try {
+        await db.execute('SELECT 1');
+      } catch (dbError) {
+        return res.status(400).json({ 
+          error: "Connection failed", 
+          message: "Koneksi gagal. Silakan periksa URL dan Token Anda.",
+          details: String(dbError)
+        });
+      }
+
       // Re-initialize database tables if needed
       await initDb();
-      res.json({ message: "Database configuration updated successfully" });
+      
+      const isVercel = !!process.env.VERCEL;
+      res.json({ 
+        message: isVercel 
+          ? "Konfigurasi diperbarui untuk sesi ini. Catatan: Di Vercel, Anda harus mengatur Environment Variables (TURSO_DATABASE_URL & TURSO_AUTH_TOKEN) di Dashboard Vercel agar perubahan bersifat permanen."
+          : "Konfigurasi database berhasil diperbarui dan disimpan.",
+        persistent: !isVercel
+      });
     } catch (error) {
       console.error("Failed to update DB config:", error);
       res.status(500).json({ error: "Failed to update database configuration" });

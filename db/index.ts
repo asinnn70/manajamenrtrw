@@ -34,7 +34,12 @@ export const db = {
 };
 
 export function updateDbConfig(config: DbConfig) {
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+  } catch (e) {
+    console.warn("Warning: Could not persist database config to file. This is expected on read-only environments like Vercel.", e);
+    // We still update the in-memory config so the current process uses the new settings
+  }
   currentConfig = config;
   client = createClient(currentConfig);
 }

@@ -68,16 +68,16 @@ export function Settings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dbConfig)
       });
+      const data = await res.json();
       if (res.ok) {
-        alert("Konfigurasi database berhasil diperbarui.");
+        alert(data.message);
         fetchStatus();
       } else {
-        const error = await res.json();
-        alert(`Gagal memperbarui konfigurasi: ${error.error}`);
+        alert(`Gagal: ${data.message || data.error}`);
       }
     } catch (error) {
       console.error("Save config failed:", error);
-      alert("Terjadi kesalahan saat menyimpan konfigurasi.");
+      alert("Terjadi kesalahan koneksi saat menyimpan konfigurasi.");
     } finally {
       setSavingConfig(false);
     }
@@ -272,6 +272,20 @@ export function Settings() {
             {savingConfig ? "Menyimpan..." : "Simpan Konfigurasi"}
           </button>
         </form>
+        
+        <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+          <h4 className="text-sm font-semibold text-amber-800 mb-2 flex items-center gap-2">
+            💡 Tips untuk Vercel
+          </h4>
+          <p className="text-xs text-amber-700 leading-relaxed">
+            Jika Anda menggunakan <strong>Vercel</strong>, perubahan melalui form di atas hanya bersifat sementara (akan hilang saat server restart). 
+            Untuk hasil permanen, silakan tambahkan <strong>Environment Variables</strong> di Dashboard Vercel Anda:
+          </p>
+          <ul className="list-disc list-inside text-xs text-amber-700 mt-2 space-y-1">
+            <li><code>TURSO_DATABASE_URL</code></li>
+            <li><code>TURSO_AUTH_TOKEN</code></li>
+          </ul>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
