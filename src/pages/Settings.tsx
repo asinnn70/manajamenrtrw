@@ -252,30 +252,22 @@ export function Settings() {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
           <Database className="text-indigo-600" size={24} />
-          Konfigurasi Turso (libSQL)
+          Konfigurasi Supabase (PostgreSQL)
         </h3>
         <form onSubmit={handleSaveConfig} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Database URL</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Supabase Connection String (URI)</label>
             <input 
               type="text" 
               value={dbConfig.url}
               onChange={(e) => setDbConfig({ ...dbConfig, url: e.target.value })}
-              placeholder="libsql://your-db.turso.io"
+              placeholder="postgres://postgres.[user]:[pass]@[host]:5432/postgres"
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               required
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Auth Token</label>
-            <input 
-              type="password" 
-              value={dbConfig.authToken}
-              onChange={(e) => setDbConfig({ ...dbConfig, authToken: e.target.value })}
-              placeholder="Turso Auth Token"
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              required
-            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Dapatkan di Supabase Dashboard: Project Settings &gt; Database &gt; Connection string &gt; URI
+            </p>
           </div>
           <button 
             type="submit"
@@ -287,21 +279,26 @@ export function Settings() {
           </button>
         </form>
         
-        <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-          <h4 className="text-sm font-semibold text-amber-800 mb-2 flex items-center gap-2">
-            💡 Tips untuk Vercel
+        <div className="mt-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+          <h4 className="text-sm font-semibold text-indigo-800 mb-2 flex items-center gap-2">
+            🚀 Solusi Koneksi Supabase
           </h4>
-          <p className="text-xs text-amber-700 leading-relaxed">
-            Jika Anda menggunakan <strong>Vercel</strong>, perubahan melalui form di atas hanya bersifat sementara (akan hilang saat server restart). 
-            Untuk hasil permanen, silakan tambahkan <strong>Environment Variables</strong> di Dashboard Vercel Anda:
-          </p>
-          <ul className="list-disc list-inside text-xs text-amber-700 mt-2 space-y-1">
-            <li><code>TURSO_DATABASE_URL</code></li>
-            <li><code>TURSO_AUTH_TOKEN</code></li>
-          </ul>
-          <p className="text-[10px] text-amber-600 mt-3 font-medium italic">
-            * Jangan lupa untuk melakukan <strong>Redeploy</strong> di Vercel setelah menambahkan variabel di atas agar perubahan terbaca oleh aplikasi.
-          </p>
+          <div className="text-xs text-indigo-700 space-y-3">
+            <p className="p-2 bg-white rounded border border-indigo-100">
+              <strong>1. Gunakan Port 6543 (Sangat Disarankan):</strong><br />
+              Ganti <code>:5432</code> menjadi <code>:6543</code> di URL Anda. Port ini (Transaction Pooler) jauh lebih stabil dan biasanya tidak diblokir oleh firewall cloud/Vercel.
+            </p>
+            <p>
+              <strong>2. Hapus Kurung Siku:</strong><br />
+              Pastikan password Anda bersih. <br />
+              <span className="text-red-500">Salah:</span> <code>:[password]@</code><br />
+              <span className="text-green-600">Benar:</span> <code>:password@</code>
+            </p>
+            <p>
+              <strong>3. Matikan IP Restriction:</strong><br />
+              Di Supabase Dashboard, pastikan <strong>Database &gt; Network Restrictions</strong> tidak membatasi IP, atau tambahkan <code>0.0.0.0/0</code> jika Anda menggunakan Vercel.
+            </p>
+          </div>
         </div>
       </div>
 

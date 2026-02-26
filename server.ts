@@ -21,19 +21,19 @@ app.get("/api/db-config", (req, res) => {
 app.post("/api/db-config", async (req, res) => {
   try {
     const { url, authToken } = req.body;
-    if (!url || !authToken) {
-      return res.status(400).json({ error: "URL and Auth Token are required" });
+    if (!url) {
+      return res.status(400).json({ error: "Connection String (URL) is required" });
     }
     
-    updateDbConfig({ url, authToken });
+    updateDbConfig({ url, authToken: authToken || '' });
     
     // Test the connection immediately
     try {
       await db.execute('SELECT 1');
-    } catch (dbError) {
+    } catch (dbError: any) {
       return res.status(400).json({ 
         error: "Connection failed", 
-        message: "Koneksi gagal. Silakan periksa URL dan Token Anda.",
+        message: `Koneksi gagal: ${dbError.message || 'Unknown error'}`,
         details: String(dbError)
       });
     }
@@ -44,7 +44,7 @@ app.post("/api/db-config", async (req, res) => {
     const isVercel = !!process.env.VERCEL;
     res.json({ 
       message: isVercel 
-        ? "Konfigurasi diperbarui untuk sesi ini. Catatan: Di Vercel, Anda harus mengatur Environment Variables (TURSO_DATABASE_URL & TURSO_AUTH_TOKEN) di Dashboard Vercel agar perubahan bersifat permanen."
+        ? "Konfigurasi diperbarui untuk sesi ini. Catatan: Di Vercel, Anda harus mengatur Environment Variable (SUPABASE_DB_URL) di Dashboard Vercel agar perubahan bersifat permanen."
         : "Konfigurasi database berhasil diperbarui dan disimpan.",
       persistent: !isVercel
     });
@@ -316,6 +316,17 @@ app.post("/api/db-config", async (req, res) => {
   app.get("/api/db-status", async (req, res) => {
     try {
       console.log("Checking database status...");
+      const dbConfig = getDbConfig();
+      if (!dbConfig.url) {
+        return res.json({
+          status: "Not Configured",
+          type: "Supabase (PostgreSQL)",
+          residentCount: 0,
+          location: "Belum dikonfigurasi",
+          message: "Silakan atur Connection String di menu Pengaturan."
+        });
+      }
+
       const result = await db.execute('SELECT count(*) as count FROM residents');
       console.log("Database query successful:", result.rows[0]);
       
@@ -329,11 +340,11 @@ app.post("/api/db-config", async (req, res) => {
 
       res.json({
         status: "Connected",
-        type: "Turso (libSQL)",
+        type: "Supabase (PostgreSQL)",
         residentCount: count,
-        location: "Remote (Turso)",
-        configSource: process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN ? "Environment Variables" : (fs.existsSync(path.join(process.cwd(), 'db-config.json')) ? "db-config.json" : "Default Fallback"),
-        databaseUrl: getDbConfig().url.replace(/\/\/.*@/, "//***@").split('.').map((part, i, arr) => i === 0 ? part : (i === arr.length - 1 ? part : '***')).join('.')
+        location: "Remote (Supabase)",
+        configSource: process.env.SUPABASE_DB_URL ? "Environment Variables" : (fs.existsSync(path.join(process.cwd(), 'db-config.json')) ? "db-config.json" : "Default Fallback"),
+        databaseUrl: getDbConfig().url.replace(/\/\/.*@/, "//***@")
       });
     } catch (error) {
       console.error("Database status check failed:", error);
