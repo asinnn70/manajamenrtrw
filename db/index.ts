@@ -161,9 +161,10 @@ export async function initDb() {
   if (isInitialized) return;
 
   try {
-    console.log("Initializing database tables...");
-    // Create Residents Table (Postgres syntax)
-    await sql`
+    console.log("DB_LOG: Initializing database tables in a single batch...");
+    
+    // Combine all table creations into one big query to save time/roundtrips
+    await sql.unsafe(`
       CREATE TABLE IF NOT EXISTS residents (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -177,21 +178,15 @@ export async function initDb() {
         maritalStatus TEXT DEFAULT 'Lajang',
         familyRelationship TEXT DEFAULT 'Kepala Keluarga',
         familyCardNumber TEXT
-      )
-    `;
+      );
 
-    // Create Announcements Table
-    await sql`
       CREATE TABLE IF NOT EXISTS announcements (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
         date TEXT NOT NULL,
         content TEXT NOT NULL
-      )
-    `;
+      );
 
-    // Create Letters Table
-    await sql`
       CREATE TABLE IF NOT EXISTS letters (
         id SERIAL PRIMARY KEY,
         type TEXT NOT NULL,
@@ -199,22 +194,16 @@ export async function initDb() {
         date TEXT NOT NULL,
         status TEXT NOT NULL,
         content TEXT
-      )
-    `;
+      );
 
-    // Create Mutations Table
-    await sql`
       CREATE TABLE IF NOT EXISTS mutations (
         id SERIAL PRIMARY KEY,
         residentId INTEGER NOT NULL REFERENCES residents(id),
         type TEXT NOT NULL,
         date TEXT NOT NULL,
         details TEXT
-      )
-    `;
+      );
 
-    // Create Transactions Table
-    await sql`
       CREATE TABLE IF NOT EXISTS transactions (
         id SERIAL PRIMARY KEY,
         type TEXT NOT NULL,
@@ -222,11 +211,8 @@ export async function initDb() {
         date TEXT NOT NULL,
         description TEXT NOT NULL,
         category TEXT NOT NULL
-      )
-    `;
+      );
 
-    // Create Reports Table
-    await sql`
       CREATE TABLE IF NOT EXISTS reports (
         id SERIAL PRIMARY KEY,
         residentId INTEGER NOT NULL REFERENCES residents(id),
@@ -234,14 +220,15 @@ export async function initDb() {
         description TEXT NOT NULL,
         date TEXT NOT NULL,
         status TEXT DEFAULT 'Menunggu'
-      )
-    `;
+      );
+    `);
 
     // Seed data if empty
     const countResult = await sql`SELECT count(*) FROM residents`;
     const count = parseInt(countResult[0].count);
 
     if (count === 0) {
+      console.log('DB_LOG: Seeding initial data...');
       const seedData = [
         { name: "Warga 1", nik: "0000-1", address: "Jl. Mawar No. 10", rt: "01", rw: "05", status: "Tetap", phone: "081234567890", gender: "Laki-laki", maritalStatus: "Menikah" },
         { name: "Warga 2", nik: "0000-2", address: "Jl. Melati No. 5", rt: "02", rw: "05", status: "Tetap", phone: "081234567891", gender: "Perempuan", maritalStatus: "Menikah" },
@@ -256,12 +243,12 @@ export async function initDb() {
           VALUES (${resident.name}, ${resident.nik}, ${resident.address}, ${resident.rt}, ${resident.rw}, ${resident.status}, ${resident.phone}, ${resident.gender}, ${resident.maritalStatus})
         `;
       }
-      console.log('Database seeded with initial data');
     }
+
     isInitialized = true;
-    console.log("Database tables initialized successfully");
+    console.log("DB_LOG: Database tables initialized successfully");
   } catch (error) {
-    console.error("Database initialization failed:", error);
+    console.error("DB_LOG_ERROR: Database initialization failed:", error);
     throw error;
   }
 }

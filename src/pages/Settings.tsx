@@ -72,12 +72,20 @@ export function Settings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dbConfig)
       });
-      const data = await res.json();
-      if (res.ok) {
-        alert(data.message);
-        fetchStatus();
+      
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        const data = await res.json();
+        if (res.ok) {
+          alert(data.message);
+          fetchStatus();
+        } else {
+          alert(`Gagal: ${data.message || data.error || 'Unknown error'}`);
+        }
       } else {
-        alert(`Gagal: ${data.message || data.error}`);
+        const text = await res.text();
+        console.error("Server returned non-JSON response:", text);
+        alert(`Server Error (${res.status}): Terjadi kesalahan pada server Vercel. Silakan cek log di Dashboard Vercel.`);
       }
     } catch (error: any) {
       console.error("Save config failed:", error);
