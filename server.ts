@@ -3,59 +3,56 @@ import { initDb, db, getDbConfig, updateDbConfig } from "./db/index";
 import path from "path";
 import fs from "fs";
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+const PORT = 3000;
 
-  // Initialize Database
+app.use(express.json());
+
+// Initialize Database in background
+initDb().catch(err => {
+  console.error("Background database initialization failed:", err);
+});
+
+// API Routes
+app.get("/api/db-config", (req, res) => {
+  res.json(getDbConfig());
+});
+
+app.post("/api/db-config", async (req, res) => {
   try {
-    await initDb();
-  } catch (err) {
-    console.error("Database initialization failed:", err);
-  }
-
-  app.use(express.json());
-
-  // API Routes
-  app.get("/api/db-config", (req, res) => {
-    res.json(getDbConfig());
-  });
-
-  app.post("/api/db-config", async (req, res) => {
-    try {
-      const { url, authToken } = req.body;
-      if (!url || !authToken) {
-        return res.status(400).json({ error: "URL and Auth Token are required" });
-      }
-      
-      updateDbConfig({ url, authToken });
-      
-      // Test the connection immediately
-      try {
-        await db.execute('SELECT 1');
-      } catch (dbError) {
-        return res.status(400).json({ 
-          error: "Connection failed", 
-          message: "Koneksi gagal. Silakan periksa URL dan Token Anda.",
-          details: String(dbError)
-        });
-      }
-
-      // Re-initialize database tables if needed
-      await initDb();
-      
-      const isVercel = !!process.env.VERCEL;
-      res.json({ 
-        message: isVercel 
-          ? "Konfigurasi diperbarui untuk sesi ini. Catatan: Di Vercel, Anda harus mengatur Environment Variables (TURSO_DATABASE_URL & TURSO_AUTH_TOKEN) di Dashboard Vercel agar perubahan bersifat permanen."
-          : "Konfigurasi database berhasil diperbarui dan disimpan.",
-        persistent: !isVercel
-      });
-    } catch (error) {
-      console.error("Failed to update DB config:", error);
-      res.status(500).json({ error: "Failed to update database configuration" });
+    const { url, authToken } = req.body;
+    if (!url || !authToken) {
+      return res.status(400).json({ error: "URL and Auth Token are required" });
     }
-  });
+    
+    updateDbConfig({ url, authToken });
+    
+    // Test the connection immediately
+    try {
+      await db.execute('SELECT 1');
+    } catch (dbError) {
+      return res.status(400).json({ 
+        error: "Connection failed", 
+        message: "Koneksi gagal. Silakan periksa URL dan Token Anda.",
+        details: String(dbError)
+      });
+    }
+
+    // Re-initialize database tables if needed
+    await initDb();
+    
+    const isVercel = !!process.env.VERCEL;
+    res.json({ 
+      message: isVercel 
+        ? "Konfigurasi diperbarui untuk sesi ini. Catatan: Di Vercel, Anda harus mengatur Environment Variables (TURSO_DATABASE_URL & TURSO_AUTH_TOKEN) di Dashboard Vercel agar perubahan bersifat permanen."
+        : "Konfigurasi database berhasil diperbarui dan disimpan.",
+      persistent: !isVercel
+    });
+  } catch (error) {
+    console.error("Failed to update DB config:", error);
+    res.status(500).json({ error: "Failed to update database configuration" });
+  }
+});
 
   app.get("/api/residents", async (req, res) => {
     try {
@@ -395,28 +392,31 @@ async function startServer() {
     res.status(500).json({ error: "Internal Server Error", message: err.message });
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
+// Vite middleware for development
+if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  import("vite").then(({ createServer: createViteServer }) => {
+    createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
+    }).then(vite => {
+      app.use(vite.middlewares);
+      console.log("Vite middleware loaded");
     });
-    app.use(vite.middlewares);
-  } else {
-    // Production static file serving would go here
-    app.use(express.static('dist'));
+  }).catch(e => {
+    console.warn("Vite could not be loaded, skipping middleware:", e);
+  });
+} else {
+  // Production static file serving
+  const distPath = path.join(process.cwd(), 'dist');
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
   }
-
-  if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
-
-  return app;
 }
 
-const appPromise = startServer();
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
 
-export default appPromise;
+export default app;
