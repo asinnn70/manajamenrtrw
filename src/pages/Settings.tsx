@@ -9,6 +9,7 @@ interface DbStatus {
   location: string;
   configSource?: string;
   databaseUrl?: string;
+  details?: string;
 }
 
 export function Settings() {
@@ -30,7 +31,8 @@ export function Settings() {
           status: 'Error',
           type: data.type || 'Unknown',
           residentCount: 0,
-          location: data.message || 'Gagal terhubung ke database'
+          location: data.error || 'Gagal terhubung ke database',
+          details: data.details || String(data.message || '')
         });
       }
     } catch (error) {
@@ -77,9 +79,9 @@ export function Settings() {
       } else {
         alert(`Gagal: ${data.message || data.error}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Save config failed:", error);
-      alert("Terjadi kesalahan koneksi saat menyimpan konfigurasi.");
+      alert(`Terjadi kesalahan koneksi saat menyimpan konfigurasi: ${error.message || 'Unknown error'}`);
     } finally {
       setSavingConfig(false);
     }
@@ -195,6 +197,12 @@ export function Settings() {
               <div className="mt-3 pt-3 border-t border-slate-200">
                 <span className="text-[10px] font-medium text-slate-400 block mb-1 uppercase tracking-wider">Database URL Aktif</span>
                 <span className="text-[9px] font-mono text-slate-500 break-all leading-tight block bg-white p-1.5 rounded border border-slate-100">{dbStatus.databaseUrl}</span>
+              </div>
+            )}
+            {dbStatus?.details && (
+              <div className="mt-3 pt-3 border-t border-red-100 bg-red-50/50 p-2 rounded">
+                <span className="text-[10px] font-bold text-red-600 block mb-1 uppercase tracking-wider">Log Penyebab Error</span>
+                <span className="text-[10px] font-mono text-red-700 break-words leading-tight block">{dbStatus.details}</span>
               </div>
             )}
           </div>

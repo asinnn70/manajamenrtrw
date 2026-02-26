@@ -16,19 +16,24 @@ app.get("/api/db-config", (req, res) => {
 app.post("/api/db-config", async (req, res) => {
   try {
     const { url, authToken } = req.body;
+    console.log("API_LOG: Received request to update DB config");
     if (!url) {
+      console.warn("API_LOG_WARN: Connection String (URL) is missing in request");
       return res.status(400).json({ error: "Connection String (URL) is required" });
     }
     
-    updateDbConfig({ url, authToken: authToken || '' });
+    await updateDbConfig({ url, authToken: authToken || '' });
     
     // Test the connection immediately with a safety timeout
     try {
+      console.log("API_LOG: Testing database connection...");
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Connection test timed out (5s)")), 5000)
+        setTimeout(() => reject(new Error("Connection test timed out (4s)")), 4000)
       );
       await Promise.race([db.execute('SELECT 1'), timeoutPromise]);
+      console.log("API_LOG: Database connection test successful");
     } catch (dbError: any) {
+      console.error("API_LOG_ERROR: Database connection test failed:", dbError);
       return res.status(400).json({ 
         error: "Connection failed", 
         message: `Koneksi gagal: ${dbError.message || 'Unknown error'}`,
@@ -37,7 +42,9 @@ app.post("/api/db-config", async (req, res) => {
     }
 
     // Re-initialize database tables if needed
+    console.log("API_LOG: Initializing database tables...");
     await initDb();
+    console.log("API_LOG: Database tables initialized");
     
     const isVercel = !!process.env.VERCEL;
     res.json({ 
@@ -47,17 +54,20 @@ app.post("/api/db-config", async (req, res) => {
       persistent: !isVercel
     });
   } catch (error) {
-    console.error("Failed to update DB config:", error);
-    res.status(500).json({ error: "Failed to update database configuration" });
+    console.error("API_LOG_ERROR: Failed to update DB config:", error);
+    res.status(500).json({ error: "Failed to update database configuration", details: String(error) });
   }
 });
 
   app.get("/api/residents", async (req, res) => {
     try {
+      console.log("API_LOG: Fetching all residents");
       const result = await db.execute('SELECT * FROM residents ORDER BY id DESC');
+      console.log(`API_LOG: Successfully fetched ${result.rows.length} residents`);
       res.json(result.rows);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch residents" });
+    } catch (error: any) {
+      console.error("API_LOG_ERROR: Failed to fetch residents:", error);
+      res.status(500).json({ error: "Failed to fetch residents", details: error.message || String(error) });
     }
   });
 
@@ -313,9 +323,10 @@ app.post("/api/db-config", async (req, res) => {
 
   app.get("/api/db-status", async (req, res) => {
     try {
-      console.log("Checking database status...");
+      console.log("API_LOG: Checking database status...");
       const dbConfig = getDbConfig();
       if (!dbConfig.url) {
+        console.log("API_LOG: Database not configured yet");
         return res.json({
           status: "Not Configured",
           type: "Supabase (PostgreSQL)",
@@ -327,9 +338,10 @@ app.post("/api/db-config", async (req, res) => {
 
       // Ensure tables exist before querying
       try {
+        console.log("API_LOG: Ensuring tables are initialized...");
         await initDb();
       } catch (initErr: any) {
-        console.error("Failed to init DB during status check:", initErr);
+        console.error("API_LOG_ERROR: Failed to init DB during status check:", initErr);
         return res.status(500).json({ 
           status: "Error",
           error: "Gagal inisialisasi tabel", 
@@ -337,8 +349,9 @@ app.post("/api/db-config", async (req, res) => {
         });
       }
 
+      console.log("API_LOG: Querying resident count...");
       const result = await db.execute('SELECT count(*) as count FROM residents');
-      console.log("Database query successful:", result.rows[0]);
+      console.log("API_LOG: Database query successful:", result.rows[0]);
       
       // Handle different possible return types for count
       let count = 0;
@@ -357,7 +370,7 @@ app.post("/api/db-config", async (req, res) => {
         databaseUrl: getDbConfig().url.replace(/\/\/.*@/, "//***@")
       });
     } catch (error: any) {
-      console.error("Database status check failed:", error);
+      console.error("API_LOG_ERROR: Database status check failed:", error);
       res.status(500).json({ 
         status: "Error",
         error: "Terjadi kesalahan koneksi database", 

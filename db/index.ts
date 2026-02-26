@@ -14,20 +14,22 @@ function getInitialConfig(): DbConfig {
   const envToken = process.env.SUPABASE_ANON_KEY || process.env.TURSO_AUTH_TOKEN;
 
   if (envUrl) {
-    console.log("Using database configuration from environment variables");
+    console.log("DB_LOG: Using database configuration from environment variables");
+    console.log("DB_LOG: URL starts with:", envUrl.substring(0, 20) + "...");
     return { url: envUrl, authToken: envToken || '' };
   }
 
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-      console.log("Using database configuration from db-config.json");
+      console.log("DB_LOG: Using database configuration from db-config.json");
       return config;
     } catch (e) {
-      console.error("Failed to read db-config.json", e);
+      console.error("DB_LOG_ERROR: Failed to read db-config.json", e);
     }
   }
 
+  console.log("DB_LOG: No database configuration found, using defaults");
   return {
     url: "",
     authToken: "",
@@ -73,7 +75,12 @@ export const db = {
     }
 
     try {
+      const cleanedUrl = cleanConnectionString(currentConfig.url);
+      const port = cleanedUrl.split(':').pop()?.split('/')[0];
+      console.log(`DB_LOG: Executing query on port ${port}: ${finalQuery.substring(0, 50)}...`);
+      
       const result = await sql.unsafe(finalQuery, args);
+      console.log(`DB_LOG: Query successful, rows: ${result.length}`);
       
       return {
         rows: result.map(row => ({ ...row })),
@@ -81,10 +88,21 @@ export const db = {
         lastInsertRowid: (isInsert && result.length > 0) ? (result[0].id || result[0].ID) : null
       };
     } catch (err: any) {
-      console.error("Database execution error:", err);
+      console.error("DB_LOG_ERROR: Database execution error:", err);
       // Re-throw with more context if it's a connection error
       if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.message.includes('timeout')) {
-        throw new Error(`Database Connection Error: ${err.message} (Check if your IP is allowed in Supabase or use port 6543)`);
+        let extraHint = "";
+        const url = currentConfig.url;
+        
+        if (url.includes(':5432')) {
+          extraHint = " PENTING: Port 5432 diblokir. Ganti ke port 6543 DAN gunakan host dari tab 'Transaction Pooler' di Supabase.";
+        } else if (url.includes(':6543') && url.includes('db.') && url.includes('.supabase.co')) {
+          extraHint = " SALAH HOST: Anda menggunakan port 6543 dengan host 'db.*'. Anda HARUS menggunakan host dari tab 'Transaction Pooler' (contoh: *.pooler.supabase.com).";
+        }
+        
+        const msg = `Database Connection Error: ${err.message}.${extraHint} (Code: ${err.code})`;
+        console.error("DB_LOG_ERROR:", msg);
+        throw new Error(msg);
       }
       throw err;
     }
@@ -104,21 +122,28 @@ export const db = {
   }
 };
 
-export function updateDbConfig(config: DbConfig) {
+export async function updateDbConfig(config: DbConfig) {
   try {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
   } catch (e) {
-    console.warn("Warning: Could not persist database config to file.", e);
+    console.warn("DB_LOG_WARN: Could not persist database config to file (expected on Vercel).", e);
   }
+  
   currentConfig = config;
+  
   if (sql) {
     try {
-      sql.end();
+      console.log("DB_LOG: Closing existing database connection...");
+      await sql.end({ timeout: 2 });
     } catch (e) {
-      console.error("Error closing old connection:", e);
+      console.error("DB_LOG_ERROR: Error closing old connection:", e);
     }
   }
-  sql = config.url ? postgres(cleanConnectionString(config.url), { 
+
+  const cleanedUrl = cleanConnectionString(config.url);
+  console.log(`DB_LOG: Setting new connection URL (port: ${cleanedUrl.split(':').pop()?.split('/')[0]})`);
+  
+  sql = config.url ? postgres(cleanedUrl, { 
     ssl: { rejectUnauthorized: false },
     connect_timeout: 5,
     max: 1,
