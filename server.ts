@@ -3,15 +3,20 @@ import { initDb, db, getDbConfig, updateDbConfig } from "./db/index";
 import path from "path";
 import fs from "fs";
 
-const app = express();
-const PORT = 3000;
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
 
-// Initialize Database
-initDb().catch(console.error);
+  // Initialize Database
+  try {
+    await initDb();
+  } catch (err) {
+    console.error("Database initialization failed:", err);
+  }
 
-app.use(express.json());
+  app.use(express.json());
 
-// API Routes
+  // API Routes
   app.get("/api/db-config", (req, res) => {
     res.json(getDbConfig());
   });
@@ -362,16 +367,20 @@ app.use(express.json());
     }
   });
 
+  // Global Error Handler
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error("Unhandled error:", err);
+    res.status(500).json({ error: "Internal Server Error", message: err.message });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    import("vite").then(({ createServer: createViteServer }) => {
-      createViteServer({
-        server: { middlewareMode: true },
-        appType: "spa",
-      }).then(vite => {
-        app.use(vite.middlewares);
-      });
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
     });
+    app.use(vite.middlewares);
   } else {
     // Production static file serving would go here
     app.use(express.static('dist'));
@@ -383,4 +392,9 @@ app.use(express.json());
     });
   }
 
-export default app;
+  return app;
+}
+
+const appPromise = startServer();
+
+export default appPromise;

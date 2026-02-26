@@ -24,12 +24,19 @@ function getInitialConfig(): DbConfig {
 }
 
 let currentConfig = getInitialConfig();
-export let db = createClient(currentConfig);
+let client = createClient(currentConfig);
+
+export const db = {
+  execute: (stmt: any) => client.execute(stmt),
+  batch: (stmts: any[], mode?: any) => client.batch(stmts, mode),
+  transaction: (mode?: any) => client.transaction(mode),
+  close: () => client.close(),
+};
 
 export function updateDbConfig(config: DbConfig) {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
   currentConfig = config;
-  db = createClient(currentConfig);
+  client = createClient(currentConfig);
 }
 
 export function getDbConfig(): DbConfig {
