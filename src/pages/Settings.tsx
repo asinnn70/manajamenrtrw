@@ -7,6 +7,8 @@ interface DbStatus {
   type: string;
   residentCount: number;
   location: string;
+  configSource?: string;
+  databaseUrl?: string;
 }
 
 export function Settings() {
@@ -179,10 +181,22 @@ export function Settings() {
               <span className="text-sm font-medium text-slate-500">Lokasi File</span>
               <span className="text-sm font-mono text-slate-700">{dbStatus?.location || '-'}</span>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-slate-500">Total Data Warga</span>
               <span className="text-sm font-bold text-slate-700">{dbStatus?.residentCount || 0}</span>
             </div>
+            {dbStatus?.configSource && (
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-slate-500">Sumber Konfigurasi</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded uppercase">{dbStatus.configSource}</span>
+              </div>
+            )}
+            {dbStatus?.databaseUrl && (
+              <div className="mt-3 pt-3 border-t border-slate-200">
+                <span className="text-[10px] font-medium text-slate-400 block mb-1 uppercase tracking-wider">Database URL Aktif</span>
+                <span className="text-[9px] font-mono text-slate-500 break-all leading-tight block bg-white p-1.5 rounded border border-slate-100">{dbStatus.databaseUrl}</span>
+              </div>
+            )}
           </div>
 
           <div className="space-y-3">
@@ -285,6 +299,9 @@ export function Settings() {
             <li><code>TURSO_DATABASE_URL</code></li>
             <li><code>TURSO_AUTH_TOKEN</code></li>
           </ul>
+          <p className="text-[10px] text-amber-600 mt-3 font-medium italic">
+            * Jangan lupa untuk melakukan <strong>Redeploy</strong> di Vercel setelah menambahkan variabel di atas agar perubahan terbaca oleh aplikasi.
+          </p>
         </div>
       </div>
 

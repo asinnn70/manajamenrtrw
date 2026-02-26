@@ -10,16 +10,29 @@ export interface DbConfig {
 }
 
 function getInitialConfig(): DbConfig {
+  const envUrl = process.env.TURSO_DATABASE_URL;
+  const envToken = process.env.TURSO_AUTH_TOKEN;
+
+  // If environment variables are set (e.g. in Vercel), prioritize them
+  if (envUrl && envToken) {
+    console.log("Using database configuration from environment variables");
+    return { url: envUrl, authToken: envToken };
+  }
+
   if (fs.existsSync(CONFIG_PATH)) {
     try {
-      return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+      const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+      console.log("Using database configuration from db-config.json");
+      return config;
     } catch (e) {
       console.error("Failed to read db-config.json", e);
     }
   }
+
+  console.log("Using default fallback database configuration");
   return {
-    url: process.env.TURSO_DATABASE_URL || "libsql://dbrtrw-vercel-icfg-gitcn1w4pfupzkiukiwvtlpt.aws-us-east-1.turso.io",
-    authToken: process.env.TURSO_AUTH_TOKEN || "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzE5ODU3NjAsImlkIjoiMDE5YzkyOTQtZjEwMS03ZTkxLWI4MWUtYjJlOWU2MWEzMjIwIiwicmlkIjoiZjU3NWQ3ZjMtODU5My00OTFjLWJmYjAtODMyOTkzMjczOTkwIn0.2fAcsvtrzxk9A4aM7qyo67KQXvC8JseauBbKO2nV72kz4dnmjfq28dqz5KlmJFTlw0NXgQ0j_ioLESUVops2Aw",
+    url: "libsql://dbrtrw-vercel-icfg-gitcn1w4pfupzkiukiwvtlpt.aws-us-east-1.turso.io",
+    authToken: "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzE5ODU3NjAsImlkIjoiMDE5YzkyOTQtZjEwMS03ZTkxLWI4MWUtYjJlOWU2MWEzMjIwIiwicmlkIjoiZjU3NWQ3ZjMtODU5My00OTFjLWJmYjAtODMyOTkzMjczOTkwIn0.2fAcsvtrzxk9A4aM7qyo67KQXvC8JseauBbKO2nV72kz4dnmjfq28dqz5KlmJFTlw0NXgQ0j_ioLESUVops2Aw",
   };
 }
 

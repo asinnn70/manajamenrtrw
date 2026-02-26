@@ -334,7 +334,9 @@ async function startServer() {
         status: "Connected",
         type: "Turso (libSQL)",
         residentCount: count,
-        location: "Remote (Turso)"
+        location: "Remote (Turso)",
+        configSource: process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN ? "Environment Variables" : (fs.existsSync(path.join(process.cwd(), 'db-config.json')) ? "db-config.json" : "Default Fallback"),
+        databaseUrl: getDbConfig().url.replace(/\/\/.*@/, "//***@").split('.').map((part, i, arr) => i === 0 ? part : (i === arr.length - 1 ? part : '***')).join('.')
       });
     } catch (error) {
       console.error("Database status check failed:", error);
