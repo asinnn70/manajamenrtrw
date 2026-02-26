@@ -130,10 +130,13 @@ export function getDbConfig(): DbConfig {
   return currentConfig;
 }
 
+let isInitialized = false;
 export async function initDb() {
   if (!sql) return;
+  if (isInitialized) return;
 
   try {
+    console.log("Initializing database tables...");
     // Create Residents Table (Postgres syntax)
     await sql`
       CREATE TABLE IF NOT EXISTS residents (
@@ -230,7 +233,10 @@ export async function initDb() {
       }
       console.log('Database seeded with initial data');
     }
+    isInitialized = true;
+    console.log("Database tables initialized successfully");
   } catch (error) {
-    console.error("Database initialization/migration failed:", error);
+    console.error("Database initialization failed:", error);
+    throw error;
   }
 }

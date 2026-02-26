@@ -325,6 +325,18 @@ app.post("/api/db-config", async (req, res) => {
         });
       }
 
+      // Ensure tables exist before querying
+      try {
+        await initDb();
+      } catch (initErr: any) {
+        console.error("Failed to init DB during status check:", initErr);
+        return res.status(500).json({ 
+          status: "Error",
+          error: "Gagal inisialisasi tabel", 
+          details: initErr.message || String(initErr) 
+        });
+      }
+
       const result = await db.execute('SELECT count(*) as count FROM residents');
       console.log("Database query successful:", result.rows[0]);
       
@@ -344,12 +356,12 @@ app.post("/api/db-config", async (req, res) => {
         configSource: process.env.SUPABASE_DB_URL ? "Environment Variables" : (fs.existsSync(path.join(process.cwd(), 'db-config.json')) ? "db-config.json" : "Default Fallback"),
         databaseUrl: getDbConfig().url.replace(/\/\/.*@/, "//***@")
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Database status check failed:", error);
       res.status(500).json({ 
-        status: "Error", 
-        error: String(error),
-        message: "Gagal terhubung ke database Turso. Pastikan URL dan Token benar."
+        status: "Error",
+        error: "Terjadi kesalahan koneksi database", 
+        details: error.message || String(error) 
       });
     }
   });
