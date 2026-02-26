@@ -43,9 +43,10 @@ function cleanConnectionString(url: string): string {
 
 let currentConfig = getInitialConfig();
 let sql = currentConfig.url ? postgres(cleanConnectionString(currentConfig.url), { 
-  ssl: { rejectUnauthorized: false }, // More resilient for various cloud environments
-  connect_timeout: 20, // Further increase timeout to 20 seconds
-  max: 1, // Limit connections for serverless/preview environment
+  ssl: { rejectUnauthorized: false },
+  connect_timeout: 5,
+  max: 1,
+  idle_timeout: 3,
 }) : null;
 
 // Compatibility layer to convert SQLite/libSQL style '?' to Postgres '$1'
@@ -110,11 +111,18 @@ export function updateDbConfig(config: DbConfig) {
     console.warn("Warning: Could not persist database config to file.", e);
   }
   currentConfig = config;
-  if (sql) sql.end();
+  if (sql) {
+    try {
+      sql.end();
+    } catch (e) {
+      console.error("Error closing old connection:", e);
+    }
+  }
   sql = config.url ? postgres(cleanConnectionString(config.url), { 
     ssl: { rejectUnauthorized: false },
-    connect_timeout: 20,
+    connect_timeout: 5,
     max: 1,
+    idle_timeout: 3,
   }) : null;
 }
 

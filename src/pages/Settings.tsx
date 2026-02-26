@@ -269,34 +269,42 @@ export function Settings() {
               Dapatkan di Supabase Dashboard: Project Settings &gt; Database &gt; Connection string &gt; URI
             </p>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Auth Token (Opsional)</label>
+            <input 
+              type="password" 
+              value={dbConfig.authToken}
+              onChange={(e) => setDbConfig({ ...dbConfig, authToken: e.target.value })}
+              placeholder="Hanya jika diperlukan oleh proxy/pooler Anda"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
           <button 
             type="submit"
             disabled={savingConfig}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
           >
             <Save size={18} />
-            {savingConfig ? "Menyimpan..." : "Simpan Konfigurasi"}
+            {savingConfig ? "Menghubungkan..." : "Simpan Konfigurasi"}
           </button>
         </form>
         
         <div className="mt-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
           <h4 className="text-sm font-semibold text-indigo-800 mb-2 flex items-center gap-2">
-            🚀 Solusi Koneksi Supabase
+            🚀 Solusi Koneksi Supabase (Vercel)
           </h4>
           <div className="text-xs text-indigo-700 space-y-3">
             <p className="p-2 bg-white rounded border border-indigo-100">
-              <strong>1. Gunakan Port 6543 (Sangat Disarankan):</strong><br />
-              Ganti <code>:5432</code> menjadi <code>:6543</code> di URL Anda. Port ini (Transaction Pooler) jauh lebih stabil dan biasanya tidak diblokir oleh firewall cloud/Vercel.
+              <strong>1. Gunakan Port 6543 (Transaction Pooler):</strong><br />
+              Vercel sering memblokir port <code>5432</code>. Pastikan URL Anda menggunakan port <strong>6543</strong>.
             </p>
             <p>
-              <strong>2. Hapus Kurung Siku:</strong><br />
-              Pastikan password Anda bersih. <br />
-              <span className="text-red-500">Salah:</span> <code>:[password]@</code><br />
-              <span className="text-green-600">Benar:</span> <code>:password@</code>
+              <strong>2. Masalah Timeout:</strong><br />
+              Jika muncul "Kesalahan koneksi", biasanya karena Vercel membatasi waktu eksekusi (10 detik). Pastikan database Supabase Anda tidak sedang dalam status "Paused".
             </p>
             <p>
-              <strong>3. Matikan IP Restriction:</strong><br />
-              Di Supabase Dashboard, pastikan <strong>Database &gt; Network Restrictions</strong> tidak membatasi IP, atau tambahkan <code>0.0.0.0/0</code> jika Anda menggunakan Vercel.
+              <strong>3. Environment Variable:</strong><br />
+              Sangat disarankan memasukkan <code>SUPABASE_DB_URL</code> langsung di Dashboard Vercel agar koneksi lebih stabil dan permanen.
             </p>
           </div>
         </div>

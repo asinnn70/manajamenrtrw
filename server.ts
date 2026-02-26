@@ -8,11 +8,6 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Initialize Database in background
-initDb().catch(err => {
-  console.error("Background database initialization failed:", err);
-});
-
 // API Routes
 app.get("/api/db-config", (req, res) => {
   res.json(getDbConfig());
@@ -27,9 +22,12 @@ app.post("/api/db-config", async (req, res) => {
     
     updateDbConfig({ url, authToken: authToken || '' });
     
-    // Test the connection immediately
+    // Test the connection immediately with a safety timeout
     try {
-      await db.execute('SELECT 1');
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Connection test timed out (5s)")), 5000)
+      );
+      await Promise.race([db.execute('SELECT 1'), timeoutPromise]);
     } catch (dbError: any) {
       return res.status(400).json({ 
         error: "Connection failed", 
