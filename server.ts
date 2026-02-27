@@ -205,7 +205,17 @@ app.use(express.json());
       console.log(`Processing message from ${sender}: ${msgUpper}`);
       
       const residents = await sheetsService.getResidents() as any[];
-      const resident = residents.find(r => r.phone === sender || r.phone === '0' + sender.substring(2) || r.phone === sender.replace(/^62/, '0'));
+      
+      // Clean sender number (remove linked device ID like :1, :2, and non-digits)
+      const cleanSender = String(sender).split(':')[0].replace(/\D/g, '');
+      const senderAsZero = cleanSender.startsWith('62') ? '0' + cleanSender.substring(2) : cleanSender;
+      const senderAs62 = cleanSender.startsWith('0') ? '62' + cleanSender.substring(1) : cleanSender;
+
+      const resident = residents.find(r => {
+        if (!r.phone) return false;
+        const dbPhone = String(r.phone).replace(/\D/g, '');
+        return dbPhone === cleanSender || dbPhone === senderAsZero || dbPhone === senderAs62;
+      });
 
       if (!resident) {
         console.log(`Unregistered number: ${sender}`);
