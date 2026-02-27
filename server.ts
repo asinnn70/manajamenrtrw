@@ -211,10 +211,31 @@ app.use(express.json());
       const senderAsZero = cleanSender.startsWith('62') ? '0' + cleanSender.substring(2) : cleanSender;
       const senderAs62 = cleanSender.startsWith('0') ? '62' + cleanSender.substring(1) : cleanSender;
 
+      console.log(`Debug Phone Matching:
+        - Original Sender: ${sender}
+        - Clean Sender: ${cleanSender}
+        - As Zero: ${senderAsZero}
+        - As 62: ${senderAs62}
+      `);
+
       const resident = residents.find(r => {
         if (!r.phone) return false;
-        const dbPhone = String(r.phone).replace(/\D/g, '');
-        return dbPhone === cleanSender || dbPhone === senderAsZero || dbPhone === senderAs62;
+        // Normalize DB phone: remove all non-digits, trim whitespace
+        const dbPhoneRaw = String(r.phone).trim();
+        const dbPhone = dbPhoneRaw.replace(/\D/g, '');
+        
+        // Check if dbPhone ends with the clean sender (without country code) to be safe
+        const match = dbPhone === cleanSender || dbPhone === senderAsZero || dbPhone === senderAs62;
+        
+        // Debugging log for specific number
+        if (dbPhone.includes('81362789535')) {
+             console.log(`Checking DB Phone: '${r.phone}' -> Cleaned: '${dbPhone}' vs Sender: '${cleanSender}'`);
+        }
+
+        if (match) {
+            console.log(`Match Found! DB Phone: ${r.phone} (${dbPhone}) matches sender.`);
+        }
+        return match;
       });
 
       if (!resident) {
