@@ -167,13 +167,35 @@ app.use(express.json());
 
   app.post("/api/whatsapp/start", async (req, res) => {
     const targetUrl = currentVpsWaUrl || process.env.VITE_VPS_URL;
-    if (!targetUrl) return res.status(400).json({ error: 'URL VPS belum diatur' });
+    console.log(`[API] Starting WhatsApp Bot. Target URL: ${targetUrl}`);
+    
+    if (!targetUrl) {
+        console.error('[API] Error: URL VPS belum diatur');
+        return res.status(400).json({ error: 'URL VPS belum diatur' });
+    }
+
     try {
       const baseUrl = targetUrl.replace(/\/$/, '');
-      const response = await fetch(`${baseUrl}/start`, { method: 'POST' });
+      console.log(`[API] Sending POST request to: ${baseUrl}/start`);
+      
+      const response = await fetch(`${baseUrl}/start`, { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+      });
+      
+      console.log(`[API] VPS Response Status: ${response.status}`);
+      
+      if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[API] VPS Error Response: ${errorText}`);
+          throw new Error(`VPS returned ${response.status}: ${errorText}`);
+      }
+
       const data = await response.json();
+      console.log(`[API] VPS Success Response:`, data);
       res.json(data);
     } catch (error: any) {
+      console.error(`[API] Failed to start bot:`, error);
       res.status(500).json({ error: `Gagal memulai bot di VPS: ${error.message}` });
     }
   });
@@ -207,7 +229,18 @@ app.use(express.json());
       const residents = await sheetsService.getResidents() as any[];
       
       // Clean sender number (remove linked device ID like :1, :2, and non-digits)
-      const cleanSender = String(sender).split(':')[0].replace(/\D/g, '');
+      let cleanSender = String(sender).split(':')[0].replace(/\D/g, '');
+      
+      // Handle case where sender starts with '2' but is actually '62' (some providers/devices weirdness)
+      // OR handle if it's a different country code.
+      // Based on logs: 210243044823113 -> This looks like a very long number or a specific ID.
+      // If it's a WhatsApp ID that doesn't match phone number directly, we might need to rely on registration.
+      
+      // Standardize to 62 format if possible
+      if (cleanSender.startsWith('0')) {
+          cleanSender = '62' + cleanSender.substring(1);
+      }
+
       const senderAsZero = cleanSender.startsWith('62') ? '0' + cleanSender.substring(2) : cleanSender;
       const senderAs62 = cleanSender.startsWith('0') ? '62' + cleanSender.substring(1) : cleanSender;
 
@@ -224,12 +257,22 @@ app.use(express.json());
         const dbPhoneRaw = String(r.phone).trim();
         const dbPhone = dbPhoneRaw.replace(/\D/g, '');
         
-        // Check if dbPhone ends with the clean sender (without country code) to be safe
-        const match = dbPhone === cleanSender || dbPhone === senderAsZero || dbPhone === senderAs62;
+        // Standardize DB phone to 62 format for comparison
+        let dbPhone62 = dbPhone;
+        if (dbPhone.startsWith('0')) {
+            dbPhone62 = '62' + dbPhone.substring(1);
+        }
+
+        // Check exact match on 62 format OR local format
+        const match = dbPhone === cleanSender || 
+                      dbPhone === senderAsZero || 
+                      dbPhone === senderAs62 ||
+                      dbPhone62 === cleanSender ||
+                      dbPhone62 === senderAs62;
         
         // Debugging log for specific number
         if (dbPhone.includes('81362789535')) {
-             console.log(`Checking DB Phone: '${r.phone}' -> Cleaned: '${dbPhone}' vs Sender: '${cleanSender}'`);
+             console.log(`Checking DB Phone: '${r.phone}' -> Cleaned: '${dbPhone}' (62: ${dbPhone62}) vs Sender: '${cleanSender}'`);
         }
 
         if (match) {
