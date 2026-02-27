@@ -4,18 +4,14 @@ import path from "path";
 import fs from "fs";
 import mcache from 'memory-cache';
 import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+app.use(express.json());
 
-  app.use(express.json());
-
-  // --- Google Sheets API Routes ---
+// --- Google Sheets API Routes ---
 
   app.get("/api/residents", async (req, res) => {
     try {
@@ -156,7 +152,7 @@ async function startServer() {
   });
 
   app.get("/api/whatsapp/status", async (req, res) => {
-    const targetUrl = process.env.VITE_VPS_URL || currentVpsWaUrl;
+    const targetUrl = currentVpsWaUrl || process.env.VITE_VPS_URL;
     if (!targetUrl) return res.json({ status: 'close', qr: null });
     try {
       const baseUrl = targetUrl.replace(/\/$/, '');
@@ -170,7 +166,7 @@ async function startServer() {
   });
 
   app.post("/api/whatsapp/start", async (req, res) => {
-    const targetUrl = process.env.VITE_VPS_URL || currentVpsWaUrl;
+    const targetUrl = currentVpsWaUrl || process.env.VITE_VPS_URL;
     if (!targetUrl) return res.status(400).json({ error: 'URL VPS belum diatur' });
     try {
       const baseUrl = targetUrl.replace(/\/$/, '');
@@ -183,7 +179,7 @@ async function startServer() {
   });
 
   app.post("/api/whatsapp/logout", async (req, res) => {
-    const targetUrl = process.env.VITE_VPS_URL || currentVpsWaUrl;
+    const targetUrl = currentVpsWaUrl || process.env.VITE_VPS_URL;
     if (!targetUrl) return res.status(400).json({ error: 'URL VPS belum diatur' });
     try {
       const baseUrl = targetUrl.replace(/\/$/, '');
@@ -288,19 +284,27 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
+    import('vite').then(async ({ createServer: createViteServer }) => {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+
+      const PORT = 3000;
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
     });
-    app.use(vite.middlewares);
   } else {
     // Serve React App in production
     const clientBuildPath = path.join(__dirname, 'dist');
-    app.use(express.static(clientBuildPath));
-
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(clientBuildPath, 'index.html'));
-    });
+    if (fs.existsSync(clientBuildPath)) {
+      app.use(express.static(clientBuildPath));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(clientBuildPath, 'index.html'));
+      });
+    }
   }
 
   // Global Error Handler
@@ -309,12 +313,7 @@ async function startServer() {
     res.status(500).json({ error: "Internal Server Error", message: err.message });
   });
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
-
-startServer();
+export default app;
 
 
 
