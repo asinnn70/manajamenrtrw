@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Search, Filter, AlertCircle, CheckCircle, Clock, X, FileText, User } from "lucide-react";
+import { Plus, Search, Filter, AlertCircle, CheckCircle, Clock, X, FileText, User, MessageSquare } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { motion, AnimatePresence } from "motion/react";
 
 interface Report {
   id: number;
-  residentId: number;
+  residentId: number | string;
   residentName: string;
   title: string;
   description: string;
@@ -38,10 +38,27 @@ export function Reports() {
       const data = await response.json();
       
       if (Array.isArray(data)) {
+        // Filter data based on the logged-in user's RT code
+        const filteredData = user?.rtId 
+          ? data.filter((report: Report) => {
+              // Assuming the report object has an 'rt' property or we can derive it.
+              // If the report doesn't have an RT property directly, we might need to fetch residents to cross-reference,
+              // but for now, let's assume the backend or the data structure includes it, or we filter by residentId if we know the resident's RT.
+              // Since we don't have 'rt' in the Report interface, we'll need to rely on the backend to filter, OR
+              // we can just show all reports for now if we can't filter here.
+              // Let's add a check if the report has an 'rt' property (even if not in interface)
+              const reportRt = (report as any).rt;
+              if (reportRt) {
+                return String(reportRt).toUpperCase() === String(user.rtId).toUpperCase();
+              }
+              return true; // If no RT info on report, show it (fallback)
+            })
+          : data;
+
         if (role === 'resident' && user) {
-          setReports(data.filter((r: Report) => r.residentId === user.id));
+          setReports(filteredData.filter((r: Report) => String(r.residentId) === String(user.id)));
         } else {
-          setReports(data);
+          setReports(filteredData.reverse());
         }
       } else {
         console.error("Data is not an array:", data);
@@ -61,9 +78,11 @@ export function Reports() {
 
     const newReport = {
       residentId: user.id,
+      residentName: user.name, // Ensure residentName is sent
       title,
       description,
       date: new Date().toISOString().split('T')[0],
+      rt: user.rtId || "", // Include RT code for filtering
     };
 
     try {
@@ -127,6 +146,8 @@ export function Reports() {
     }
   };
 
+  const isWhatsAppReport = (title: string) => title.startsWith('[WA]');
+
   if (loading) return <div className="p-6">Loading...</div>;
 
   return (
@@ -135,19 +156,9 @@ export function Reports() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Laporan Warga</h1>
           <p className="text-slate-500 text-sm mt-1">
-            {role === 'admin' ? 'Kelola laporan dan keluhan dari warga' : 'Sampaikan laporan atau keluhan Anda'}
+            {role === 'admin' ? 'Kelola laporan dan keluhan dari warga (via WhatsApp)' : 'Daftar laporan yang Anda sampaikan via WhatsApp'}
           </p>
         </div>
-        
-        {role === 'resident' && (
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200"
-          >
-            <Plus size={20} />
-            <span className="font-medium">Buat Laporan</span>
-          </button>
-        )}
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col sm:flex-row gap-4">
@@ -185,9 +196,15 @@ export function Reports() {
               setSelectedReport(report);
               setIsDetailModalOpen(true);
             }}
-            className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all cursor-pointer flex flex-col h-full"
+            className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all cursor-pointer flex flex-col h-full relative overflow-hidden"
           >
-            <div className="flex justify-between items-start mb-4">
+            {isWhatsAppReport(report.title) && (
+              <div className="absolute top-0 right-0 bg-green-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg flex items-center gap-1">
+                <MessageSquare size={12} /> WhatsApp
+              </div>
+            )}
+
+            <div className="flex justify-between items-start mb-4 mt-2">
               <div className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-1.5 ${getStatusColor(report.status)}`}>
                 {getStatusIcon(report.status)}
                 {report.status}
@@ -195,15 +212,27 @@ export function Reports() {
               <span className="text-xs text-slate-400 font-medium">{report.date}</span>
             </div>
             
-            <h3 className="text-lg font-bold text-slate-800 mb-2 line-clamp-2">{report.title}</h3>
+            <h3 className="text-lg font-bold text-slate-800 mb-2 line-clamp-2">
+              {isWhatsAppReport(report.title) ? report.title.replace('[WA] ', '') : report.title}
+            </h3>
             
-            <p className="text-slate-600 text-sm line-clamp-3 mb-4 flex-1">
+            <p className="text-slate-600 text-sm line-clamp-3 mb-4 flex-1 whitespace-pre-line">
               {report.description}
             </p>
             
             <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
-              <span className="text-sm font-medium text-slate-700">{report.residentName}</span>
-              <button className="text-indigo-600 text-sm font-medium hover:text-indigo-700 flex items-center gap-1">
+              <span className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                <User size={14} className="text-slate-400" />
+                {report.residentName}
+              </span>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedReport(report);
+                  setIsDetailModalOpen(true);
+                }}
+                className="text-indigo-600 text-sm font-medium hover:text-indigo-700 flex items-center gap-1"
+              >
                 Detail <AlertCircle size={14} />
               </button>
             </div>
@@ -219,68 +248,7 @@ export function Reports() {
         )}
       </div>
 
-      {/* Add Report Modal */}
-      <AnimatePresence>
-        {isAddModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
-            >
-              <div className="flex justify-between items-center p-6 border-b border-slate-100">
-                <h2 className="text-xl font-bold text-slate-800">Buat Laporan Baru</h2>
-                <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                  <X size={24} />
-                </button>
-              </div>
-              
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Judul Laporan</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="Contoh: Lampu Jalan Mati"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Deskripsi Detail</label>
-                  <textarea 
-                    required
-                    rows={5}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-                    placeholder="Jelaskan detail laporan atau keluhan Anda..."
-                  />
-                </div>
-                
-                <div className="pt-4 flex gap-3">
-                  <button 
-                    type="button"
-                    onClick={() => setIsAddModalOpen(false)}
-                    className="flex-1 px-4 py-2 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors"
-                  >
-                    Batal
-                  </button>
-                  <button 
-                    type="submit"
-                    className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200"
-                  >
-                    Kirim Laporan
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Add Report Modal Removed */}
 
       {/* Detail Modal */}
       <AnimatePresence>
@@ -293,7 +261,14 @@ export function Reports() {
               className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
             >
               <div className="flex justify-between items-center p-6 border-b border-slate-100">
-                <h2 className="text-xl font-bold text-slate-800">Detail Laporan</h2>
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                  Detail Laporan
+                  {isWhatsAppReport(selectedReport.title) && (
+                    <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-md flex items-center gap-1">
+                      <MessageSquare size={12} /> via WhatsApp
+                    </span>
+                  )}
+                </h2>
                 <button onClick={() => setIsDetailModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                   <X size={24} />
                 </button>
@@ -303,7 +278,9 @@ export function Reports() {
                 <div className="space-y-6">
                   <div>
                     <div className="flex justify-between items-start mb-2">
-                      <h3 className="text-xl font-bold text-slate-800">{selectedReport.title}</h3>
+                      <h3 className="text-xl font-bold text-slate-800">
+                        {isWhatsAppReport(selectedReport.title) ? selectedReport.title.replace('[WA] ', '') : selectedReport.title}
+                      </h3>
                       <div className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-1.5 ${getStatusColor(selectedReport.status)}`}>
                         {getStatusIcon(selectedReport.status)}
                         {selectedReport.status}

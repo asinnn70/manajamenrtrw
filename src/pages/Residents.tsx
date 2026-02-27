@@ -2,8 +2,10 @@ import { Search, Plus, Filter, MoreHorizontal, X, CreditCard, Printer, User, Fil
 import { useState, useEffect } from "react";
 import React from "react";
 import { Resident } from "@/types";
+import { useAuth } from "@/context/AuthContext";
 
 export function Residents() {
+  const { user } = useAuth();
   const [residentsList, setResidentsList] = useState<Resident[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
@@ -12,12 +14,13 @@ export function Residents() {
   const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
   const [familyMembers, setFamilyMembers] = useState<Resident[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<Omit<Resident, 'id'>>({
     name: "",
     nik: "",
     familyCardNumber: "",
     address: "",
-    rt: "",
+    rt: user?.rtId || "",
     rw: "05",
     status: "Tetap",
     phone: "",
@@ -39,7 +42,11 @@ export function Residents() {
       if (!response.ok) throw new Error('Network response was not ok');
       const data = await response.json();
       if (Array.isArray(data)) {
-        setResidentsList(data);
+        // Filter data based on the logged-in user's RT code
+        const filteredData = user?.rtId 
+          ? data.filter((resident: Resident) => String(resident.rt).toUpperCase() === String(user.rtId).toUpperCase())
+          : data;
+        setResidentsList(filteredData);
       } else {
         console.error("Data is not an array:", data);
         setResidentsList([]);
@@ -63,6 +70,8 @@ export function Residents() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const response = await fetch('/api/residents', {
         method: 'POST',
@@ -81,7 +90,7 @@ export function Residents() {
           nik: "",
           familyCardNumber: "",
           address: "",
-          rt: "",
+          rt: user?.rtId || "",
           rw: "05",
           status: "Tetap",
           phone: "",
@@ -92,6 +101,8 @@ export function Residents() {
       }
     } catch (error) {
       console.error("Failed to add resident:", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -423,7 +434,8 @@ export function Residents() {
                     value={formData.rt}
                     onChange={handleInputChange}
                     required
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    readOnly={!!user?.rtId}
+                    className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${user?.rtId ? 'bg-slate-50 text-slate-500' : ''}`}
                     placeholder="00"
                   />
                 </div>
@@ -463,9 +475,10 @@ export function Residents() {
                 </button>
                 <button 
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  Simpan Data
+                  {isSubmitting ? 'Menyimpan...' : 'Simpan Data'}
                 </button>
               </div>
             </form>

@@ -1,5 +1,6 @@
-import { Database, HardDrive, Save, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Database, HardDrive, Save, RefreshCw, Trash2, Upload, Cloud, Smartphone, CheckCircle, Copy, QrCode, Power, PowerOff } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
+import { useAuth } from "@/context/AuthContext";
 import React from "react";
 
 interface DbStatus {
@@ -7,41 +8,42 @@ interface DbStatus {
   type: string;
   residentCount: number;
   location: string;
-  configSource?: string;
-  databaseUrl?: string;
   details?: string;
 }
 
 export function Settings() {
-  const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
-  const [dbConfig, setDbConfig] = useState({ url: '', authToken: '' });
+  const [status, setStatus] = useState<DbStatus | null>(null);
+  const [scriptUrl, setScriptUrl] = useState('');
+  const [vpsUrl, setVpsUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [savingVps, setSavingVps] = useState(false);
+  const [waStatus, setWaStatus] = useState<{ status: string; qr: string | null; message?: string }>({ status: 'close', qr: null });
+  const { role } = useAuth();
 
   const fetchStatus = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/db-status');
-      const data = await res.json();
+      const res = await fetch('/api/residents');
       if (res.ok) {
-        setDbStatus(data);
-      } else {
-        setDbStatus({
-          status: 'Error',
-          type: data.type || 'Unknown',
-          residentCount: 0,
-          location: data.error || 'Gagal terhubung ke database',
-          details: data.details || String(data.message || '')
+        const data = await res.json();
+        setStatus({
+          status: 'Connected',
+          type: 'Google Sheets',
+          residentCount: data.length,
+          location: 'Google Cloud',
         });
+      } else {
+        throw new Error('Failed to fetch from Google Sheets');
       }
-    } catch (error) {
-      console.error("Failed to fetch DB status", error);
-      setDbStatus({
+    } catch (error: any) {
+      console.error("Failed to fetch status", error);
+      setStatus({
         status: 'Error',
-        type: '-',
+        type: 'Google Sheets',
         residentCount: 0,
-        location: 'Terjadi kesalahan koneksi'
+        location: 'Periksa URL & Izin Apps Script',
+        details: error.message
       });
     } finally {
       setLoading(false);
@@ -50,119 +52,101 @@ export function Settings() {
 
   const fetchConfig = async () => {
     try {
-      const res = await fetch('/api/db-config');
+      const res = await fetch('/api/script-url');
       const data = await res.json();
-      setDbConfig(data);
+      setScriptUrl(data.url);
+      
+      const vpsRes = await fetch('/api/vps-url');
+      const vpsData = await vpsRes.json();
+      setVpsUrl(vpsData.url);
     } catch (error) {
-      console.error("Failed to fetch DB config", error);
+      console.error("Failed to fetch config URLs", error);
+    }
+  };
+
+  const fetchWaStatus = async () => {
+    if (role !== 'admin') return;
+    try {
+      const res = await fetch('/api/whatsapp/status');
+      const data = await res.json();
+      setWaStatus(data);
+    } catch (error) {
+      console.error("Failed to fetch WA status", error);
     }
   };
 
   useEffect(() => {
-    fetchStatus();
-    fetchConfig();
-  }, []);
+    fetchConfig().then(() => fetchStatus());
+    
+    if (role === 'admin') {
+      fetchWaStatus();
+      const interval = setInterval(fetchWaStatus, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [role]);
+
+  const handleStartWa = async () => {
+    try {
+      await fetch('/api/whatsapp/start', { method: 'POST' });
+      fetchWaStatus();
+    } catch (error) {
+      console.error("Failed to start WA", error);
+    }
+  };
+
+  const handleLogoutWa = async () => {
+    try {
+      await fetch('/api/whatsapp/logout', { method: 'POST' });
+      fetchWaStatus();
+    } catch (error) {
+      console.error("Failed to logout WA", error);
+    }
+  };
+
+  const handleSaveVpsConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingVps(true);
+    try {
+      const res = await fetch('/api/vps-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: vpsUrl })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message);
+        fetchWaStatus();
+      } else {
+        alert(`Gagal: ${data.error}`);
+      }
+    } catch (error: any) {
+      alert(`Terjadi kesalahan: ${error.message}`);
+    } finally {
+      setSavingVps(false);
+    }
+  };
 
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingConfig(true);
     try {
-      const res = await fetch('/api/db-config', {
+      const res = await fetch('/api/script-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dbConfig)
+        body: JSON.stringify({ url: scriptUrl })
       });
-      
-      const contentType = res.headers.get("content-type");
-      if (contentType && contentType.indexOf("application/json") !== -1) {
-        const data = await res.json();
-        if (res.ok) {
-          alert(data.message);
-          fetchStatus();
-        } else {
-          alert(`Gagal: ${data.message || data.error || 'Unknown error'}`);
-        }
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message);
+        fetchStatus();
       } else {
-        const text = await res.text();
-        console.error("Server returned non-JSON response:", text);
-        alert(`Server Error (${res.status}): Terjadi kesalahan pada server Vercel. Silakan cek log di Dashboard Vercel.`);
+        alert(`Gagal: ${data.error}`);
       }
     } catch (error: any) {
-      console.error("Save config failed:", error);
-      alert(`Terjadi kesalahan koneksi saat menyimpan konfigurasi: ${error.message || 'Unknown error'}`);
+      alert(`Terjadi kesalahan: ${error.message}`);
     } finally {
       setSavingConfig(false);
     }
-  };
-
-  const handleBackup = () => {
-    window.location.href = '/api/backup';
-  };
-
-  const handleReset = async () => {
-    if (!confirm("Apakah Anda yakin ingin menghapus SEMUA data warga? Tindakan ini tidak dapat dibatalkan.")) return;
-    
-    try {
-      const res = await fetch('/api/reset', { method: 'POST' });
-      if (res.ok) {
-        alert("Database berhasil direset.");
-        fetchStatus();
-      } else {
-        alert("Gagal mereset database.");
-      }
-    } catch (error) {
-      console.error("Reset failed:", error);
-      alert("Terjadi kesalahan saat mereset database.");
-    }
-  };
-
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const csvText = event.target?.result as string;
-      const lines = csvText.split('\n');
-      const headers = lines[0].split(',').map(h => h.trim());
-      
-      const data = lines.slice(1).filter(line => line.trim()).map(line => {
-        const values = line.split(',').map(v => v.trim());
-        const obj: any = {};
-        headers.forEach((header, index) => {
-          obj[header] = values[index];
-        });
-        return obj;
-      });
-
-      try {
-        const res = await fetch('/api/residents/import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-
-        if (res.ok) {
-          const result = await res.json();
-          alert(result.message);
-          fetchStatus();
-        } else {
-          const error = await res.json();
-          alert(`Gagal import: ${error.error}`);
-        }
-      } catch (error) {
-        console.error("Import failed:", error);
-        alert("Terjadi kesalahan saat import data.");
-      }
-      
-      // Reset file input
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    };
-    reader.readAsText(file);
   };
 
   return (
@@ -170,51 +154,35 @@ export function Settings() {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
           <Database className="text-indigo-600" size={24} />
-          Pengaturan Database
+          Status Database (Google Sheet)
         </h3>
-        
         <div className="grid gap-6 md:grid-cols-2">
           <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-slate-500">Status Koneksi</span>
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                dbStatus?.status === 'Connected' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-              }`}>
-                {dbStatus?.status || 'Checking...'}
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${status?.status === 'Connected' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                {status?.status || 'Checking...'}
               </span>
             </div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-slate-500">Tipe Database</span>
-              <span className="text-sm font-mono text-slate-700">{dbStatus?.type || '-'}</span>
+              <span className="text-sm font-mono text-slate-700">{status?.type || '-'}</span>
             </div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-slate-500">Lokasi File</span>
-              <span className="text-sm font-mono text-slate-700">{dbStatus?.location || '-'}</span>
+              <span className="text-sm font-medium text-slate-500">Lokasi</span>
+              <span className="text-sm font-mono text-slate-700">{status?.location || '-'}</span>
             </div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-slate-500">Total Data Warga</span>
-              <span className="text-sm font-bold text-slate-700">{dbStatus?.residentCount || 0}</span>
+              <span className="text-sm font-bold text-slate-700">{status?.residentCount || 0}</span>
             </div>
-            {dbStatus?.configSource && (
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-slate-500">Sumber Konfigurasi</span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded uppercase">{dbStatus.configSource}</span>
-              </div>
-            )}
-            {dbStatus?.databaseUrl && (
-              <div className="mt-3 pt-3 border-t border-slate-200">
-                <span className="text-[10px] font-medium text-slate-400 block mb-1 uppercase tracking-wider">Database URL Aktif</span>
-                <span className="text-[9px] font-mono text-slate-500 break-all leading-tight block bg-white p-1.5 rounded border border-slate-100">{dbStatus.databaseUrl}</span>
-              </div>
-            )}
-            {dbStatus?.details && (
+            {status?.details && (
               <div className="mt-3 pt-3 border-t border-red-100 bg-red-50/50 p-2 rounded">
-                <span className="text-[10px] font-bold text-red-600 block mb-1 uppercase tracking-wider">Log Penyebab Error</span>
-                <span className="text-[10px] font-mono text-red-700 break-words leading-tight block">{dbStatus.details}</span>
+                <span className="text-[10px] font-bold text-red-600 block mb-1 uppercase tracking-wider">Detail Error</span>
+                <span className="text-[10px] font-mono text-red-700 break-words leading-tight block">{status.details}</span>
               </div>
             )}
           </div>
-
           <div className="space-y-3">
             <button 
               onClick={fetchStatus}
@@ -224,76 +192,29 @@ export function Settings() {
               <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
               Refresh Status
             </button>
-            
-            <button 
-              onClick={handleBackup}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200"
-            >
-              <Save size={18} />
-              Backup Database
-            </button>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                onClick={handleImportClick}
-                className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-              >
-                <Upload size={18} />
-                Import CSV
-              </button>
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileChange} 
-                accept=".csv" 
-                className="hidden" 
-              />
-
-              <button 
-                onClick={handleReset}
-                className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors"
-              >
-                <Trash2 size={18} />
-                Reset Data
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-400 text-center mt-2">
-              Format CSV: name,nik,address,rt,rw,status,phone
-            </p>
           </div>
         </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-          <Database className="text-indigo-600" size={24} />
-          Konfigurasi Supabase (PostgreSQL)
+          <Cloud className="text-indigo-600" size={24} />
+          Konfigurasi Google Apps Script
         </h3>
         <form onSubmit={handleSaveConfig} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Supabase Connection String (URI)</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">URL Web App Google Apps Script</label>
             <input 
               type="text" 
-              value={dbConfig.url}
-              onChange={(e) => setDbConfig({ ...dbConfig, url: e.target.value })}
-              placeholder="postgres://postgres.[user]:[pass]@[host]:5432/postgres"
+              value={scriptUrl}
+              onChange={(e) => setScriptUrl(e.target.value)}
+              placeholder="https://script.google.com/macros/s/.../exec"
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               required
             />
-            <p className="text-[10px] text-slate-400 mt-1">
-              Dapatkan di Supabase Dashboard: Project Settings &gt; Database &gt; Connection string &gt; URI
+            <p className="text-xs text-slate-400 mt-1">
+              Deploy script Anda sebagai Web App dan paste URL-nya di sini.
             </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Auth Token (Opsional)</label>
-            <input 
-              type="password" 
-              value={dbConfig.authToken}
-              onChange={(e) => setDbConfig({ ...dbConfig, authToken: e.target.value })}
-              placeholder="Hanya jika diperlukan oleh proxy/pooler Anda"
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
           </div>
           <button 
             type="submit"
@@ -301,51 +222,119 @@ export function Settings() {
             className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
           >
             <Save size={18} />
-            {savingConfig ? "Menghubungkan..." : "Simpan Konfigurasi"}
+            {savingConfig ? "Menyimpan..." : "Simpan Konfigurasi"}
           </button>
         </form>
-        
-        <div className="mt-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-          <h4 className="text-sm font-semibold text-indigo-800 mb-2 flex items-center gap-2">
-            🚀 Solusi Koneksi Supabase (Vercel)
-          </h4>
-          <div className="text-xs text-indigo-700 space-y-3">
-            <p className="p-2 bg-white rounded border border-indigo-100">
-              <strong>1. Gunakan Port 6543 (Transaction Pooler):</strong><br />
-              Vercel sering memblokir port <code>5432</code>. Pastikan URL Anda menggunakan port <strong>6543</strong>.
-            </p>
-            <p>
-              <strong>2. Masalah Timeout:</strong><br />
-              Jika muncul "Kesalahan koneksi", biasanya karena Vercel membatasi waktu eksekusi (10 detik). Pastikan database Supabase Anda tidak sedang dalam status "Paused".
-            </p>
-            <p>
-              <strong>3. Environment Variable:</strong><br />
-              Sangat disarankan memasukkan <code>SUPABASE_DB_URL</code> langsung di Dashboard Vercel agar koneksi lebih stabil dan permanen.
-            </p>
-          </div>
-        </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-          <HardDrive className="text-slate-600" size={24} />
-          Informasi Sistem
-        </h3>
-        <div className="space-y-4">
-          <div className="flex justify-between py-2 border-b border-slate-100">
-            <span className="text-sm text-slate-500">Versi Aplikasi</span>
-            <span className="text-sm font-medium text-slate-800">v1.0.0</span>
-          </div>
-          <div className="flex justify-between py-2 border-b border-slate-100">
-            <span className="text-sm text-slate-500">Environment</span>
-            <span className="text-sm font-medium text-slate-800">Development</span>
-          </div>
-          <div className="flex justify-between py-2 border-b border-slate-100">
-            <span className="text-sm text-slate-500">Server Time</span>
-            <span className="text-sm font-medium text-slate-800">{new Date().toLocaleString()}</span>
+      {role === 'admin' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+            <Smartphone className="text-green-600" size={24} />
+            Integrasi Bot WhatsApp
+          </h3>
+          
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm font-medium text-slate-500">Status Bot</span>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  waStatus.status === 'open' ? 'bg-green-100 text-green-700' : 
+                  waStatus.status === 'connecting' ? 'bg-amber-100 text-amber-700' : 
+                  waStatus.status === 'error' ? 'bg-red-100 text-red-700' :
+                  'bg-slate-200 text-slate-700'
+                }`}>
+                  {waStatus.status === 'open' ? 'Terhubung' : 
+                   waStatus.status === 'connecting' ? 'Menghubungkan...' : 
+                   waStatus.status === 'error' ? 'Error / Offline' :
+                   'Terputus'}
+                </span>
+              </div>
+              
+              {waStatus.status === 'open' ? (
+                <div className="text-center py-4">
+                  <CheckCircle className="mx-auto text-green-500 mb-2" size={48} />
+                  <p className="text-sm text-slate-600 font-medium">Bot WhatsApp aktif dan siap menerima pesan.</p>
+                </div>
+              ) : waStatus.qr ? (
+                <div className="text-center">
+                  <p className="text-sm text-slate-600 mb-3 font-medium">Scan QR Code ini dengan WhatsApp Anda:</p>
+                  <div className="bg-white p-2 rounded-xl inline-block border border-slate-200 shadow-sm">
+                    <img src={waStatus.qr} alt="WhatsApp QR Code" className="w-48 h-48" />
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <QrCode className="mx-auto text-slate-300 mb-2" size={48} />
+                  <p className="text-sm text-slate-500">Klik tombol "Mulai Bot" untuk memunculkan QR Code.</p>
+                </div>
+              )}
+
+              {waStatus.status === 'error' && (
+                <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600">
+                  <strong>Error:</strong> {waStatus.message || 'Tidak dapat terhubung ke VPS. Pastikan server VPS berjalan dan port terbuka.'}
+                </div>
+              )}
+            </div>
+            
+            <div className="space-y-4">
+              <form onSubmit={handleSaveVpsConfig} className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <label className="block text-sm font-medium text-slate-700 mb-1">URL API VPS WhatsApp</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={vpsUrl}
+                    onChange={(e) => setVpsUrl(e.target.value)}
+                    placeholder="http://103.x.x.x:3001"
+                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button 
+                    type="submit"
+                    disabled={savingVps}
+                    className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium hover:bg-slate-900 transition-colors disabled:opacity-50"
+                  >
+                    {savingVps ? "..." : "Simpan"}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-2">
+                  Masukkan IP dan Port VPS tempat bot WhatsApp berjalan.
+                </p>
+              </form>
+
+              <p className="text-sm text-slate-600 mb-4">
+                Bot WhatsApp memungkinkan warga untuk mengirim laporan dan mengecek status langsung melalui WhatsApp.
+              </p>
+              
+              {(waStatus.status === 'close' || waStatus.status === 'error') && !waStatus.qr && (
+                <button 
+                  onClick={handleStartWa}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors shadow-sm shadow-green-200"
+                >
+                  <Power size={18} />
+                  Mulai Bot WhatsApp
+                </button>
+              )}
+              
+              {(waStatus.status === 'open' || waStatus.qr) && (
+                <button 
+                  onClick={handleLogoutWa}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors"
+                >
+                  <PowerOff size={18} />
+                  Hentikan & Logout Bot
+                </button>
+              )}
+
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                <h4 className="text-sm font-semibold text-blue-800 mb-1">Penting untuk Vercel:</h4>
+                <p className="text-xs text-blue-700">
+                  Pengaturan ini hanya tersimpan sementara. Untuk permanen, Anda <strong>wajib</strong> menambahkan variabel <code>VITE_VPS_URL</code> di menu Environment Variables pada dashboard Vercel Anda.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

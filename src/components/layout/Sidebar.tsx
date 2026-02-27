@@ -20,7 +20,7 @@ export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
-  const { role, user, logout } = useAuth();
+  const { role, user, rtId, logout } = useAuth();
 
   const menuItems = [
     { icon: LayoutDashboard, label: "Dashboard", path: "/", roles: ['admin', 'resident'] },
@@ -71,10 +71,10 @@ export function Sidebar() {
               <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
                 <span className="text-white font-bold text-sm">RT</span>
               </div>
-              Sistem RW 05
+              Sistem {rtId || 'RW 05'}
             </h1>
             <p className="text-[11px] font-mono text-slate-500 mt-2 ml-11 uppercase tracking-wider">Kelurahan Sukamaju</p>
-            {role === 'resident' && user && (
+            {role && user && (
               <div className="mt-6 p-3 bg-white/5 rounded-xl border border-white/10 backdrop-blur-sm">
                 <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1">Login sebagai:</p>
                 <p className="text-sm font-medium text-white truncate">{user.name}</p>

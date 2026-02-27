@@ -7,6 +7,7 @@ export function Finance() {
   const { role } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [formData, setFormData] = useState({
     type: 'income',
@@ -22,7 +23,16 @@ export function Finance() {
       if (!response.ok) throw new Error('Network response was not ok');
       const data = await response.json();
       if (Array.isArray(data)) {
-        setTransactions(data);
+        // Filter transactions based on RT if possible
+        const filteredTransactions = user?.rtId 
+          ? data.filter((transaction: any) => {
+              if (transaction.rt) {
+                return String(transaction.rt).toUpperCase() === String(user.rtId).toUpperCase();
+              }
+              return true; // Fallback if no RT info
+            })
+          : data;
+        setTransactions(filteredTransactions);
       } else {
         console.error("Data is not an array:", data);
         setTransactions([]);
@@ -39,10 +49,13 @@ export function Finance() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const payload = {
         ...formData,
-        amount: parseInt(formData.amount.replace(/\D/g, '')) || 0
+        amount: parseInt(formData.amount.replace(/\D/g, '')) || 0,
+        rt: user?.rtId || "" // Add RT info to new transaction
       };
 
       const response = await fetch('/api/transactions', {
@@ -64,6 +77,8 @@ export function Finance() {
       }
     } catch (error) {
       console.error("Failed to add transaction:", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -362,9 +377,10 @@ export function Finance() {
                 </button>
                 <button 
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  Simpan Transaksi
+                  {isSubmitting ? 'Menyimpan...' : 'Simpan Transaksi'}
                 </button>
               </div>
             </form>

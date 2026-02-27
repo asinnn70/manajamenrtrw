@@ -10,6 +10,7 @@ export function Letters() {
   const [residentsList, setResidentsList] = useState<Resident[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [newLetter, setNewLetter] = useState({ 
     type: "Surat Pengantar KTP", 
@@ -25,17 +26,46 @@ export function Letters() {
           fetch('/api/letters'),
           fetch('/api/residents')
         ]);
+        
         const dataLetters = await resLetters.json();
         const dataResidents = await resResidents.json();
         
-        if (role === 'resident' && user) {
-          setLettersList(dataLetters.filter((l: Letter) => l.resident === user.name));
+        if (resLetters.ok && Array.isArray(dataLetters)) {
+          // Filter letters based on RT if possible, or just show all for admin if no RT info on letter
+          // Ideally, letters should have an RT field. If not, we might need to cross-reference with residents.
+          // For now, let's assume we can filter by RT if it exists, otherwise show all for admin.
+          const filteredLetters = user?.rtId 
+            ? dataLetters.filter((letter: any) => {
+                if (letter.rt) {
+                  return String(letter.rt).toUpperCase() === String(user.rtId).toUpperCase();
+                }
+                return true; // Fallback if no RT info
+              })
+            : dataLetters;
+
+          if (role === 'resident' && user) {
+            setLettersList(filteredLetters.filter((l: Letter) => l.resident === user.name));
+          } else {
+            setLettersList(filteredLetters);
+          }
         } else {
-          setLettersList(dataLetters);
+          console.error("Failed to fetch letters or invalid format:", dataLetters);
+          setLettersList([]);
         }
-        setResidentsList(dataResidents);
+
+        if (resResidents.ok && Array.isArray(dataResidents)) {
+          const filteredResidents = user?.rtId
+            ? dataResidents.filter((r: Resident) => String(r.rt).toUpperCase() === String(user.rtId).toUpperCase())
+            : dataResidents;
+          setResidentsList(filteredResidents);
+        } else {
+          console.error("Failed to fetch residents or invalid format:", dataResidents);
+          setResidentsList([]);
+        }
       } catch (error) {
         console.error("Failed to fetch data:", error);
+        setLettersList([]);
+        setResidentsList([]);
       }
     };
     fetchData();
@@ -43,6 +73,8 @@ export function Letters() {
 
   const handleCreateLetter = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const today = new Date().toISOString().split('T')[0];
       const payload = { ...newLetter, date: today };
@@ -66,6 +98,8 @@ export function Letters() {
       }
     } catch (error) {
       console.error("Failed to create letter:", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -74,37 +108,12 @@ export function Letters() {
     setIsDetailModalOpen(true);
   };
 
-  const handleUpdateStatus = async (id: number, newStatus: string) => {
-    try {
-      const res = await fetch(`/api/letters/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-
-      if (res.ok) {
-        setLettersList(lettersList.map(l => l.id === id ? { ...l, status: newStatus } : l));
-        if (selectedLetter && selectedLetter.id === id) {
-          setSelectedLetter({ ...selectedLetter, status: newStatus });
-        }
-      }
-    } catch (error) {
-      console.error("Failed to update status:", error);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div className="flex gap-2">
           <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
             Semua
-          </button>
-          <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
-            Menunggu
-          </button>
-          <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
-            Selesai
           </button>
         </div>
         <button 
@@ -117,21 +126,13 @@ export function Letters() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {lettersList.map((letter) => (
-          <div key={letter.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+        {lettersList.map((letter, index) => (
+          <div key={index} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
             <div className="flex justify-between items-start mb-4">
-              <div className={`p-3 rounded-lg ${
-                letter.status === 'Selesai' ? 'bg-green-50 text-green-600' :
-                letter.status === 'Proses' ? 'bg-blue-50 text-blue-600' :
-                'bg-orange-50 text-orange-600'
-              }`}>
+              <div className={`p-3 rounded-lg`}>
                 <FileText size={24} />
               </div>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                letter.status === 'Selesai' ? 'bg-green-100 text-green-800' :
-                letter.status === 'Proses' ? 'bg-blue-100 text-blue-800' :
-                'bg-orange-100 text-orange-800'
-              }`}>
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium`}>
                 {letter.status}
               </span>
             </div>
@@ -178,11 +179,7 @@ export function Letters() {
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                 <div className="flex justify-between items-start mb-2">
                   <h4 className="font-semibold text-slate-900">{selectedLetter.type}</h4>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    selectedLetter.status === 'Selesai' ? 'bg-green-100 text-green-800' :
-                    selectedLetter.status === 'Proses' ? 'bg-blue-100 text-blue-800' :
-                    'bg-orange-100 text-orange-800'
-                  }`}>
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium`}>
                     {selectedLetter.status}
                   </span>
                 </div>
@@ -196,27 +193,6 @@ export function Letters() {
                   {selectedLetter.content || "Tidak ada keterangan tambahan."}
                 </div>
               </div>
-
-              {role === 'admin' && (
-                <div>
-                  <h5 className="text-sm font-medium text-slate-700 mb-2">Update Status</h5>
-                  <div className="flex gap-2">
-                    {['Menunggu', 'Proses', 'Selesai'].map((status) => (
-                      <button
-                        key={status}
-                        onClick={() => handleUpdateStatus(selectedLetter.id, status)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                          selectedLetter.status === status
-                            ? 'bg-indigo-50 border-indigo-200 text-indigo-700 ring-1 ring-indigo-200'
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        {status}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div className="pt-4 flex justify-end">
                 <button 
@@ -279,8 +255,8 @@ export function Letters() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="">Pilih Warga</option>
-                    {residentsList.map(r => (
-                      <option key={r.id} value={r.name}>{r.name} - {r.nik}</option>
+                    {residentsList.map((r, index) => (
+                      <option key={r.nik} value={r.name}>{r.name} - {r.nik}</option>
                     ))}
                   </select>
                 )}
@@ -322,9 +298,10 @@ export function Letters() {
                 </button>
                 <button 
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  Buat Surat
+                  {isSubmitting ? 'Menyimpan...' : 'Buat Surat'}
                 </button>
               </div>
             </form>

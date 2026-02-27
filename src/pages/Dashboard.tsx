@@ -15,9 +15,12 @@ import {
   Cell
 } from 'recharts';
 
+import { useAuth } from '@/context/AuthContext';
+
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
 export function Dashboard() {
+  const { user } = useAuth();
   const [residents, setResidents] = useState<Resident[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,8 +36,23 @@ export function Dashboard() {
         const dataResidents = await resResidents.json();
         const dataTransactions = await resTransactions.json();
         
-        if (Array.isArray(dataResidents)) setResidents(dataResidents);
-        if (Array.isArray(dataTransactions)) setTransactions(dataTransactions);
+        if (Array.isArray(dataResidents)) {
+          const filteredResidents = user?.rtId
+            ? dataResidents.filter((r: Resident) => String(r.rt).toUpperCase() === String(user.rtId).toUpperCase())
+            : dataResidents;
+          setResidents(filteredResidents);
+        }
+        if (Array.isArray(dataTransactions)) {
+          const filteredTransactions = user?.rtId
+            ? dataTransactions.filter((t: any) => {
+                if (t.rt) {
+                  return String(t.rt).toUpperCase() === String(user.rtId).toUpperCase();
+                }
+                return true;
+              })
+            : dataTransactions;
+          setTransactions(filteredTransactions);
+        }
       } catch (error) {
         console.error("Failed to fetch data:", error);
       } finally {

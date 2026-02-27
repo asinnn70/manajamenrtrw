@@ -1,280 +1,120 @@
 import express from "express";
-import { initDb, db, getDbConfig, updateDbConfig } from "./db/index";
+import { sheetsService } from "./src/services/sheetsService.js";
 import path from "path";
 import fs from "fs";
+import mcache from 'memory-cache';
+import { fileURLToPath } from 'url';
+import { createServer as createViteServer } from 'vite';
 
-const app = express();
-const PORT = 3000;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-app.use(express.json());
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
 
-// API Routes
-app.get("/api/db-config", (req, res) => {
-  res.json(getDbConfig());
-});
+  app.use(express.json());
 
-app.post("/api/db-config", async (req, res) => {
-  try {
-    const { url, authToken } = req.body;
-    console.log("API_LOG: Received request to update DB config");
-    if (!url) {
-      console.warn("API_LOG_WARN: Connection String (URL) is missing in request");
-      return res.status(400).json({ error: "Connection String (URL) is required" });
-    }
-    
-    await updateDbConfig({ url, authToken: authToken || '' });
-    
-    // Test the connection immediately with a safety timeout
-    try {
-      console.log("API_LOG: Testing database connection...");
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Connection test timed out (4s)")), 4000)
-      );
-      await Promise.race([db.execute('SELECT 1'), timeoutPromise]);
-      console.log("API_LOG: Database connection test successful");
-    } catch (dbError: any) {
-      console.error("API_LOG_ERROR: Database connection test failed:", dbError);
-      return res.status(400).json({ 
-        error: "Connection failed", 
-        message: `Koneksi gagal: ${dbError.message || 'Unknown error'}`,
-        details: String(dbError)
-      });
-    }
-
-    // Re-initialize database tables if needed
-    console.log("API_LOG: Initializing database tables...");
-    await initDb();
-    console.log("API_LOG: Database tables initialized");
-    
-    const isVercel = !!process.env.VERCEL;
-    res.json({ 
-      message: isVercel 
-        ? "Konfigurasi diperbarui untuk sesi ini. Catatan: Di Vercel, Anda harus mengatur Environment Variable (SUPABASE_DB_URL) di Dashboard Vercel agar perubahan bersifat permanen."
-        : "Konfigurasi database berhasil diperbarui dan disimpan.",
-      persistent: !isVercel
-    });
-  } catch (error) {
-    console.error("API_LOG_ERROR: Failed to update DB config:", error);
-    res.status(500).json({ error: "Failed to update database configuration", details: String(error) });
-  }
-});
+  // --- Google Sheets API Routes ---
 
   app.get("/api/residents", async (req, res) => {
     try {
-      console.log("API_LOG: Fetching all residents");
-      const result = await db.execute('SELECT * FROM residents ORDER BY id DESC');
-      console.log(`API_LOG: Successfully fetched ${result.rows.length} residents`);
-      res.json(result.rows);
+      console.log("API_LOG: Fetching all residents from Google Sheets");
+      const residents = await sheetsService.getResidents() as any[];
+      console.log(`API_LOG: Successfully fetched ${residents.length} residents`);
+      res.json(residents);
     } catch (error: any) {
-      console.error("API_LOG_ERROR: Failed to fetch residents:", error);
+      console.error("API_LOG_ERROR: Failed to fetch residents from Google Sheets:", error);
       res.status(500).json({ error: "Failed to fetch residents", details: error.message || String(error) });
-    }
-  });
-
-  app.get("/api/residents/:id/family", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const residentResult = await db.execute({
-        sql: 'SELECT * FROM residents WHERE id = ?',
-        args: [id]
-      });
-      const resident = residentResult.rows[0] as any;
-      
-      if (!resident) {
-        return res.status(404).json({ error: "Resident not found" });
-      }
-
-      if (!resident.familyCardNumber) {
-        return res.json([]);
-      }
-
-      const familyMembersResult = await db.execute({
-        sql: 'SELECT * FROM residents WHERE familyCardNumber = ? AND id != ?',
-        args: [resident.familyCardNumber, id]
-      });
-      res.json(familyMembersResult.rows);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch family members" });
-    }
-  });
-
-  app.post("/api/residents/:id/mutate", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { type, date, details } = req.body;
-      
-      await db.batch([
-        {
-          sql: 'INSERT INTO mutations (residentId, type, date, details) VALUES (?, ?, ?, ?)',
-          args: [id, type, date, details]
-        },
-        {
-          sql: 'UPDATE residents SET status = ? WHERE id = ?',
-          args: [type, id]
-        }
-      ], 'write');
-      
-      res.json({ message: "Resident status updated successfully" });
-    } catch (error) {
-      console.error("Mutation failed:", error);
-      res.status(500).json({ error: "Failed to update resident status" });
     }
   });
 
   app.post("/api/residents", async (req, res) => {
     try {
-      const { name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber } = req.body;
-      const result = await db.execute({
-        sql: `
-          INSERT INTO residents (name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-        args: [name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber]
-      });
-      res.json({ id: result.lastInsertRowid, ...req.body });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Failed to create resident" });
+      console.log("API_LOG: Adding new resident to Google Sheets");
+      const newResident = req.body;
+      const result = await sheetsService.addResident(newResident);
+      console.log("API_LOG: Successfully added resident");
+      res.json(result);
+    } catch (error: any) {
+      console.error("API_LOG_ERROR: Failed to add resident to Google Sheets:", error);
+      res.status(500).json({ error: "Failed to add resident", details: error.message || String(error) });
     }
   });
 
-  app.put("/api/residents/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber } = req.body;
-      const result = await db.execute({
-        sql: `
-          UPDATE residents 
-          SET name = ?, nik = ?, address = ?, rt = ?, rw = ?, status = ?, phone = ?, gender = ?, maritalStatus = ?, familyRelationship = ?, familyCardNumber = ?
-          WHERE id = ?
-        `,
-        args: [name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber, id]
-      });
-      
-      if (result.rowsAffected > 0) {
-        res.json({ message: "Resident updated successfully", id, ...req.body });
-      } else {
-        res.status(404).json({ error: "Resident not found" });
-      }
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Failed to update resident" });
-    }
-  });
-
-  // Announcements Routes
   app.get("/api/announcements", async (req, res) => {
     try {
-      const result = await db.execute('SELECT * FROM announcements ORDER BY id DESC');
-      res.json(result.rows);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch announcements" });
+      const announcements = await sheetsService.getAnnouncements();
+      res.json(announcements);
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to fetch announcements", details: error.message });
     }
   });
 
   app.post("/api/announcements", async (req, res) => {
     try {
-      const { title, date, content } = req.body;
-      const result = await db.execute({
-        sql: 'INSERT INTO announcements (title, date, content) VALUES (?, ?, ?)',
-        args: [title, date, content]
-      });
-      res.json({ id: result.lastInsertRowid, ...req.body });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create announcement" });
+      const newAnnouncement = req.body;
+      const result = await sheetsService.addAnnouncement(newAnnouncement);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to add announcement", details: error.message });
     }
   });
 
-  // Transactions Routes
-  app.get("/api/transactions", async (req, res) => {
-    try {
-      const result = await db.execute('SELECT * FROM transactions ORDER BY date DESC, id DESC');
-      res.json(result.rows);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch transactions" });
-    }
-  });
-
-  app.post("/api/transactions", async (req, res) => {
-    try {
-      const { type, amount, date, description, category } = req.body;
-      const result = await db.execute({
-        sql: 'INSERT INTO transactions (type, amount, date, description, category) VALUES (?, ?, ?, ?, ?)',
-        args: [type, amount, date, description, category]
-      });
-      res.json({ id: result.lastInsertRowid, ...req.body });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create transaction" });
-    }
-  });
-
-  // Letters Routes
   app.get("/api/letters", async (req, res) => {
     try {
-      const result = await db.execute('SELECT * FROM letters ORDER BY id DESC');
-      res.json(result.rows);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch letters" });
+      const letters = await sheetsService.getLetters();
+      res.json(letters);
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to fetch letters", details: error.message });
     }
   });
 
   app.post("/api/letters", async (req, res) => {
     try {
-      const { type, resident, date, status, content } = req.body;
-      const result = await db.execute({
-        sql: 'INSERT INTO letters (type, resident, date, status, content) VALUES (?, ?, ?, ?, ?)',
-        args: [type, resident, date, status, content]
-      });
-      res.json({ id: result.lastInsertRowid, ...req.body });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create letter" });
+      const newLetter = req.body;
+      const result = await sheetsService.addLetter(newLetter);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to add letter", details: error.message });
     }
   });
 
-  app.patch("/api/letters/:id/status", async (req, res) => {
+  app.get("/api/transactions", async (req, res) => {
     try {
-      const { id } = req.params;
-      const { status } = req.body;
-      const result = await db.execute({
-        sql: 'UPDATE letters SET status = ? WHERE id = ?',
-        args: [status, id]
-      });
-      
-      if (result.rowsAffected > 0) {
-        res.json({ message: "Letter status updated successfully" });
-      } else {
-        res.status(404).json({ error: "Letter not found" });
-      }
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update letter status" });
+      const transactions = await sheetsService.getTransactions();
+      res.json(transactions);
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to fetch transactions", details: error.message });
     }
   });
 
-  // Reports Route
+  app.post("/api/transactions", async (req, res) => {
+    try {
+      const newTransaction = req.body;
+      const result = await sheetsService.addTransaction(newTransaction);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to add transaction", details: error.message });
+    }
+  });
+
   app.get("/api/reports", async (req, res) => {
     try {
-      const result = await db.execute(`
-        SELECT reports.*, residents.name as residentName 
-        FROM reports 
-        JOIN residents ON reports.residentId = residents.id 
-        ORDER BY reports.id DESC
-      `);
-      res.json(result.rows);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch reports" });
+      const reports = await sheetsService.getReports();
+      res.json(reports);
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to fetch reports", details: error.message });
     }
   });
 
   app.post("/api/reports", async (req, res) => {
     try {
-      const { residentId, title, description, date } = req.body;
-      const result = await db.execute({
-        sql: 'INSERT INTO reports (residentId, title, description, date) VALUES (?, ?, ?, ?)',
-        args: [residentId, title, description, date]
-      });
-      res.json({ id: result.lastInsertRowid, ...req.body, status: 'Menunggu' });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create report" });
+      const newReport = { ...req.body, status: 'Menunggu' };
+      const result = await sheetsService.addReport(newReport);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to add report", details: error.message });
     }
   });
 
@@ -282,143 +122,186 @@ app.post("/api/db-config", async (req, res) => {
     try {
       const { id } = req.params;
       const { status } = req.body;
-      const result = await db.execute({
-        sql: 'UPDATE reports SET status = ? WHERE id = ?',
-        args: [status, id]
-      });
-      
-      if (result.rowsAffected > 0) {
-        res.json({ message: "Report status updated successfully" });
-      } else {
-        res.status(404).json({ error: "Report not found" });
-      }
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update report status" });
-    }
-  });
-
-  // Export Route
-  app.get("/api/reports/download", async (req, res) => {
-    try {
-      const result = await db.execute('SELECT * FROM residents');
-      const residents = result.rows as any[];
-      
-      const csvHeader = "ID,Name,NIK,Address,RT,RW,Status,Phone,Gender,MaritalStatus,FamilyRelationship,FamilyCardNumber\n";
-      const csvRows = residents.map(r => 
-        `${r.id},"${r.name}","${r.nik}","${r.address}","${r.rt}","${r.rw}","${r.status}","${r.phone}","${r.gender}","${r.maritalStatus}","${r.familyRelationship}","${r.familyCardNumber}"`
-      ).join("\n");
-      
-      const csvContent = csvHeader + csvRows;
-      const filePath = path.join(process.cwd(), 'residents_report.csv');
-      fs.writeFileSync(filePath, csvContent);
-      
-      res.download(filePath, `residents_report_${new Date().toISOString().split('T')[0]}.csv`, () => {
-        fs.unlinkSync(filePath); // Delete file after download
-      });
-    } catch (error) {
-      console.error("Report generation failed:", error);
-      res.status(500).json({ error: "Report generation failed" });
-    }
-  });
-
-  app.get("/api/db-status", async (req, res) => {
-    try {
-      console.log("API_LOG: Checking database status...");
-      const dbConfig = getDbConfig();
-      if (!dbConfig.url) {
-        console.log("API_LOG: Database not configured yet");
-        return res.json({
-          status: "Not Configured",
-          type: "Supabase (PostgreSQL)",
-          residentCount: 0,
-          location: "Belum dikonfigurasi",
-          message: "Silakan atur Connection String di menu Pengaturan."
-        });
-      }
-
-      // Ensure tables exist before querying
-      try {
-        console.log("API_LOG: Ensuring tables are initialized...");
-        await initDb();
-      } catch (initErr: any) {
-        console.error("API_LOG_ERROR: Failed to init DB during status check:", initErr);
-        return res.status(500).json({ 
-          status: "Error",
-          error: "Gagal inisialisasi tabel", 
-          details: initErr.message || String(initErr) 
-        });
-      }
-
-      console.log("API_LOG: Querying resident count...");
-      const result = await db.execute('SELECT count(*) as count FROM residents');
-      console.log("API_LOG: Database query successful:", result.rows[0]);
-      
-      // Handle different possible return types for count
-      let count = 0;
-      const row = result.rows[0];
-      if (row) {
-        const rawCount = row.count || row[0];
-        count = typeof rawCount === 'bigint' ? Number(rawCount) : Number(rawCount || 0);
-      }
-
-      res.json({
-        status: "Connected",
-        type: "Supabase (PostgreSQL)",
-        residentCount: count,
-        location: "Remote (Supabase)",
-        configSource: process.env.SUPABASE_DB_URL ? "Environment Variables" : (fs.existsSync(path.join(process.cwd(), 'db-config.json')) ? "db-config.json" : "Default Fallback"),
-        databaseUrl: getDbConfig().url.replace(/\/\/.*@/, "//***@")
-      });
+      const result = await sheetsService.updateReportStatus(Number(id), status);
+      res.json(result);
     } catch (error: any) {
-      console.error("API_LOG_ERROR: Database status check failed:", error);
-      res.status(500).json({ 
-        status: "Error",
-        error: "Terjadi kesalahan koneksi database", 
-        details: error.message || String(error) 
-      });
+      res.status(500).json({ error: "Failed to update report status", details: error.message });
     }
   });
 
-  app.get("/api/backup", (req, res) => {
-    // Backup is not supported for remote database in this way
-    res.status(400).json({ error: "Backup is not supported for remote database" });
-  });
-
-  app.post("/api/reset", async (req, res) => {
+  app.get("/api/admins", async (req, res) => {
     try {
-      await db.execute('DELETE FROM residents');
-      // Reset auto-increment
-      await db.execute('DELETE FROM sqlite_sequence WHERE name="residents"');
-      res.json({ message: "Database reset successfully" });
-    } catch (error) {
-      console.error("Reset failed:", error);
-      res.status(500).json({ error: "Reset failed" });
+      const admins = await sheetsService.getAdmins();
+      res.json(admins);
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to fetch admins", details: error.message });
     }
   });
 
-  app.post("/api/residents/import", async (req, res) => {
+  // --- WhatsApp Bot Routes (Proxy to VPS) ---
+  
+  // Use environment variable for Vercel, fallback to in-memory for local dev
+  let currentVpsWaUrl = process.env.VITE_VPS_URL || process.env.VPS_WA_URL || '';
+
+  app.get("/api/vps-url", (req, res) => {
+    res.json({ url: currentVpsWaUrl });
+  });
+
+  app.post("/api/vps-url", (req, res) => {
+    const { url } = req.body;
+    currentVpsWaUrl = url;
+    // Note: This won't persist across Vercel serverless function cold starts.
+    // Users MUST set VITE_VPS_URL in their Vercel dashboard.
+    res.json({ message: "URL VPS WhatsApp berhasil disimpan sementara. Untuk permanen, atur VITE_VPS_URL di Vercel." });
+  });
+
+  app.get("/api/whatsapp/status", async (req, res) => {
+    const targetUrl = process.env.VITE_VPS_URL || currentVpsWaUrl;
+    if (!targetUrl) return res.json({ status: 'close', qr: null });
     try {
-      const residents = req.body;
-      if (!Array.isArray(residents)) {
-        return res.status(400).json({ error: "Invalid data format. Expected an array." });
+      const baseUrl = targetUrl.replace(/\/$/, '');
+      // Panggil endpoint VPS
+      const response = await fetch(`${baseUrl}/status`);
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.json({ status: 'error', qr: null, message: `Gagal terhubung ke VPS: ${error.message}` });
+    }
+  });
+
+  app.post("/api/whatsapp/start", async (req, res) => {
+    const targetUrl = process.env.VITE_VPS_URL || currentVpsWaUrl;
+    if (!targetUrl) return res.status(400).json({ error: 'URL VPS belum diatur' });
+    try {
+      const baseUrl = targetUrl.replace(/\/$/, '');
+      const response = await fetch(`${baseUrl}/start`, { method: 'POST' });
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ error: `Gagal memulai bot di VPS: ${error.message}` });
+    }
+  });
+
+  app.post("/api/whatsapp/logout", async (req, res) => {
+    const targetUrl = process.env.VITE_VPS_URL || currentVpsWaUrl;
+    if (!targetUrl) return res.status(400).json({ error: 'URL VPS belum diatur' });
+    try {
+      const baseUrl = targetUrl.replace(/\/$/, '');
+      const response = await fetch(`${baseUrl}/logout`, { method: 'POST' });
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ error: `Gagal logout bot di VPS: ${error.message}` });
+    }
+  });
+
+  // --- Webhook from VPS ---
+  app.post("/api/whatsapp/webhook", async (req, res) => {
+    console.log("Received webhook from VPS:", req.body);
+    try {
+      const { sender, message } = req.body;
+      if (!sender || !message) {
+        console.error("Invalid payload received:", req.body);
+        return res.status(400).json({ error: "Invalid payload" });
       }
 
-      const statements = residents.map(resident => ({
-        sql: `
-          INSERT INTO residents (name, nik, address, rt, rw, status, phone, gender, maritalStatus, familyRelationship, familyCardNumber)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-        args: [resident.name, resident.nik, resident.address, resident.rt, resident.rw, resident.status, resident.phone, resident.gender, resident.maritalStatus, resident.familyRelationship, resident.familyCardNumber]
-      }));
+      const msgUpper = message.trim().toUpperCase();
+      console.log(`Processing message from ${sender}: ${msgUpper}`);
+      
+      const residents = await sheetsService.getResidents() as any[];
+      const resident = residents.find(r => r.phone === sender || r.phone === '0' + sender.substring(2) || r.phone === sender.replace(/^62/, '0'));
 
-      await db.batch(statements, 'write');
+      if (!resident) {
+        console.log(`Unregistered number: ${sender}`);
+        return res.json({ reply: 'Maaf, nomor Anda belum terdaftar di sistem RT kami. Silakan hubungi pengurus RT atau daftar melalui aplikasi web.' });
+      }
 
-      res.json({ message: `Successfully imported ${residents.length} residents` });
-    } catch (error) {
-      console.error("Import failed:", error);
-      res.status(500).json({ error: "Import failed. Ensure NIK is unique." });
+      const rtCode = resident.rt || "RT01";
+      console.log(`Resident found: ${resident.name} (${rtCode})`);
+
+      if (msgUpper === 'MENU' || msgUpper === 'PING') {
+        return res.json({ reply: `Halo Bpk/Ibu *${resident.name}* dari *${rtCode}*.\n\nBerikut adalah layanan WhatsApp RT:\n1. Ketik *LAPOR [Isi Laporan]* untuk melaporkan keluhan/masalah.\n2. Ketik *STATUS LAPORAN* untuk melihat status laporan terakhir Anda.\n3. Ketik *INFO* untuk melihat pengumuman terbaru.` });
+      }
+
+      if (msgUpper.startsWith('LAPOR ')) {
+        const reportContent = message.substring(6).trim();
+        if (reportContent.length < 5) return res.json({ reply: 'Laporan terlalu singkat. Mohon jelaskan lebih detail.' });
+
+        const newReport = {
+          residentId: resident.nik || sender,
+          residentName: resident.name,
+          title: "[WA] Laporan Warga",
+          description: reportContent,
+          date: new Date().toISOString().split('T')[0],
+          status: "Menunggu",
+          rt: rtCode
+        };
+        console.log("Adding new report:", newReport);
+        await sheetsService.addReport(newReport);
+        console.log("Report added successfully");
+        return res.json({ reply: `✅ Laporan Anda berhasil diterima dan telah masuk ke sistem web pengurus *${rtCode}*.\n\nKetik *STATUS LAPORAN* untuk mengecek perkembangannya nanti.` });
+      }
+
+      if (msgUpper === 'STATUS LAPORAN') {
+        const reports = await sheetsService.getReports() as any[];
+        const userReports = reports.filter(r => r.residentName === resident.name || String(r.residentId) === String(resident.nik)).reverse();
+        if (userReports.length === 0) return res.json({ reply: 'Anda belum memiliki laporan.' });
+        const latest = userReports[0];
+        return res.json({ reply: `*Status Laporan Terakhir Anda:*\n\nTanggal: ${latest.date}\nLaporan: ${latest.description}\nStatus: *${latest.status}*` });
+      }
+
+      if (msgUpper === 'INFO') {
+        const announcements = await sheetsService.getAnnouncements() as any[];
+        const rtAnnouncements = announcements.filter(a => String(a.rt).toUpperCase() === rtCode.toUpperCase()).reverse();
+        if (rtAnnouncements.length === 0) return res.json({ reply: `Belum ada pengumuman terbaru untuk ${rtCode}.` });
+        const latest = rtAnnouncements[0];
+        return res.json({ reply: `*Pengumuman Terbaru ${rtCode}:*\n\n*${latest.title}*\n${latest.date}\n\n${latest.content}` });
+      }
+
+      return res.json({ reply: `Maaf, perintah tidak dikenali. Ketik *MENU* untuk melihat daftar perintah yang tersedia.` });
+    } catch (error: any) {
+      console.error("Webhook error:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
+
+  // --- Configuration Routes ---
+  
+  // Use environment variable for Vercel, fallback to in-memory for local dev
+  let currentGoogleScriptUrl = process.env.VITE_GOOGLE_SCRIPT_URL || process.env.GOOGLE_SCRIPT_URL || '';
+
+  app.get("/api/script-url", (req, res) => {
+    res.json({ url: currentGoogleScriptUrl });
+  });
+
+  app.post("/api/script-url", (req, res) => {
+    const { url } = req.body;
+    if (!url) {
+      return res.status(400).json({ error: "Google Apps Script URL is required" });
+    }
+    currentGoogleScriptUrl = url;
+    process.env.GOOGLE_SCRIPT_URL = url; // Set for the current session
+    // Note: This won't persist across Vercel serverless function cold starts.
+    // Users MUST set VITE_GOOGLE_SCRIPT_URL in their Vercel dashboard.
+    res.json({ message: "URL berhasil disimpan sementara. Untuk permanen, atur VITE_GOOGLE_SCRIPT_URL di Vercel." });
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    // Serve React App in production
+    const clientBuildPath = path.join(__dirname, 'dist');
+    app.use(express.static(clientBuildPath));
+
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(clientBuildPath, 'index.html'));
+    });
+  }
 
   // Global Error Handler
   app.use((err: any, req: any, res: any, next: any) => {
@@ -426,31 +309,31 @@ app.post("/api/db-config", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error", message: err.message });
   });
 
-// Vite middleware for development
-if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-  import("vite").then(({ createServer: createViteServer }) => {
-    createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    }).then(vite => {
-      app.use(vite.middlewares);
-      console.log("Vite middleware loaded");
-    });
-  }).catch(e => {
-    console.warn("Vite could not be loaded, skipping middleware:", e);
-  });
-} else {
-  // Production static file serving
-  const distPath = path.join(process.cwd(), 'dist');
-  if (fs.existsSync(distPath)) {
-    app.use(express.static(distPath));
-  }
-}
-
-if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
-export default app;
+startServer();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
