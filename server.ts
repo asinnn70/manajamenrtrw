@@ -482,10 +482,37 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
         }
       }
 
+      // Handle Image Messages (Treat as Report automatically if image is present)
+      if (req.body.image) {
+        console.log("Image received. Processing as report...");
+        let reportContent = message;
+        
+        // Remove 'LAPOR' prefix if present to avoid duplication
+        if (msgUpper.startsWith('LAPOR ')) {
+            reportContent = message.substring(6).trim();
+        } else if (msgUpper === '[FOTO]') {
+            reportContent = ""; // Default to empty if just [Foto] placeholder
+        }
+
+        const newReport = {
+          residentId: resident.nik || sender,
+          residentName: resident.name,
+          title: "[WA] Laporan Foto",
+          description: reportContent || "[Melampirkan Foto]",
+          date: new Date().toISOString().split('T')[0],
+          status: "Menunggu",
+          rt: rtCode,
+          image: req.body.image
+        };
+        
+        console.log("Adding new report with image");
+        await sheetsService.addReport(newReport);
+        return res.json({ reply: `✅ Foto laporan Anda berhasil diterima dan telah masuk ke sistem web pengurus *${rtCode}*.\n\nKetik *STATUS LAPORAN* untuk mengecek perkembangannya nanti.` });
+      }
+
       if (msgUpper.startsWith('LAPOR ')) {
         const reportContent = message.substring(6).trim();
-        // Allow shorter text if image is present
-        if (reportContent.length < 5 && !req.body.image) {
+        if (reportContent.length < 5) {
             return res.json({ reply: 'Laporan terlalu singkat. Mohon jelaskan lebih detail.' });
         }
 
@@ -493,15 +520,15 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
           residentId: resident.nik || sender,
           residentName: resident.name,
           title: "[WA] Laporan Warga",
-          description: reportContent || "[Melampirkan Foto]",
+          description: reportContent,
           date: new Date().toISOString().split('T')[0],
           status: "Menunggu",
           rt: rtCode,
-          image: req.body.image || "" // Pass image base64 if available
+          image: "" 
         };
-        console.log("Adding new report with image:", !!newReport.image);
+        
+        console.log("Adding new report (text only)");
         await sheetsService.addReport(newReport);
-        console.log("Report added successfully");
         return res.json({ reply: `✅ Laporan Anda berhasil diterima dan telah masuk ke sistem web pengurus *${rtCode}*.\n\nKetik *STATUS LAPORAN* untuk mengecek perkembangannya nanti.` });
       }
 
