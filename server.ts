@@ -10,7 +10,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // --- Helper: Generate Surat Pengantar PDF ---
 async function generateSuratPengantarPDF(resident: any, keperluan: string): Promise<string> {
@@ -506,8 +507,13 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
         };
         
         console.log("Adding new report with image");
-        await sheetsService.addReport(newReport);
-        return res.json({ reply: `✅ Foto laporan Anda berhasil diterima dan telah masuk ke sistem web pengurus *${rtCode}*.\n\nKetik *STATUS LAPORAN* untuk mengecek perkembangannya nanti.` });
+        try {
+            await sheetsService.addReport(newReport);
+            return res.json({ reply: `✅ Foto laporan Anda berhasil diterima dan telah masuk ke sistem web pengurus *${rtCode}*.\n\nKetik *STATUS LAPORAN* untuk mengecek perkembangannya nanti.` });
+        } catch (err: any) {
+            console.error("Failed to add image report:", err);
+            return res.json({ reply: `Maaf, terjadi kesalahan saat menyimpan foto laporan Anda. Pastikan sistem Google Sheet telah diperbarui.\nError: ${err.message}` });
+        }
       }
 
       if (msgUpper.startsWith('LAPOR ')) {
@@ -528,8 +534,13 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
         };
         
         console.log("Adding new report (text only)");
-        await sheetsService.addReport(newReport);
-        return res.json({ reply: `✅ Laporan Anda berhasil diterima dan telah masuk ke sistem web pengurus *${rtCode}*.\n\nKetik *STATUS LAPORAN* untuk mengecek perkembangannya nanti.` });
+        try {
+            await sheetsService.addReport(newReport);
+            return res.json({ reply: `✅ Laporan Anda berhasil diterima dan telah masuk ke sistem web pengurus *${rtCode}*.\n\nKetik *STATUS LAPORAN* untuk mengecek perkembangannya nanti.` });
+        } catch (err: any) {
+            console.error("Failed to add text report:", err);
+            return res.json({ reply: `Maaf, terjadi kesalahan saat menyimpan laporan Anda.\nError: ${err.message}` });
+        }
       }
 
       if (msgUpper === 'STATUS LAPORAN') {
