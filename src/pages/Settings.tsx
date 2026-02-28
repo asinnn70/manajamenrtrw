@@ -266,7 +266,11 @@ export function Settings() {
               ) : (
                 <div className="text-center py-8">
                   <QrCode className="mx-auto text-slate-300 mb-2" size={48} />
-                  <p className="text-sm text-slate-500">Klik tombol "Mulai Bot" untuk memunculkan QR Code.</p>
+                  <p className="text-sm text-slate-500">
+                    {waStatus.status === 'connecting' || waStatus.status === 'initializing' 
+                      ? 'Sedang menghubungkan ke VPS...' 
+                      : 'Klik tombol "Mulai Bot" untuk memunculkan QR Code.'}
+                  </p>
                 </div>
               )}
 
@@ -305,13 +309,15 @@ export function Settings() {
                 Bot WhatsApp memungkinkan warga untuk mengirim laporan dan mengecek status langsung melalui WhatsApp.
               </p>
               
-              {(waStatus.status === 'close' || waStatus.status === 'error') && !waStatus.qr && (
+              {/* Show Start button if closed, error, or no QR yet */}
+              {(waStatus.status === 'close' || waStatus.status === 'error' || (waStatus.status === 'connecting' && !waStatus.qr)) && (
                 <button 
                   onClick={handleStartWa}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors shadow-sm shadow-green-200"
+                  disabled={waStatus.status === 'connecting' || waStatus.status === 'initializing'}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors shadow-sm shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Power size={18} />
-                  Mulai Bot WhatsApp
+                  {waStatus.status === 'connecting' || waStatus.status === 'initializing' ? 'Menghubungkan...' : 'Mulai Bot WhatsApp'}
                 </button>
               )}
               
