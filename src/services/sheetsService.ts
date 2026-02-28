@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 
 const getScriptUrl = () => {
   const url = process.env.VITE_GOOGLE_SCRIPT_URL || process.env.GOOGLE_SCRIPT_URL;
@@ -28,6 +27,19 @@ async function addResident(resident: any) {
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Failed to add resident: ${errorText}`);
+  }
+  return response.json();
+}
+
+async function updateResidentPhone(nik: string, newPhone: string) {
+  const response = await fetch(getScriptUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'updateResidentPhone', data: { nik, phone: newPhone } }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to update resident phone: ${errorText}`);
   }
   return response.json();
 }
@@ -157,6 +169,7 @@ async function getAdmins() {
 export const sheetsService = {
   getResidents,
   addResident,
+  updateResidentPhone,
   getAnnouncements,
   addAnnouncement,
   getLetters,

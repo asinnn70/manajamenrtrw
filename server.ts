@@ -321,6 +321,11 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
         - As 62: ${senderAs62}
       `);
 
+      // --- CEKID Command (Available for Unregistered Users) ---
+      if (msgUpper === 'CEKID') {
+          return res.json({ reply: `ID WhatsApp Anda: ${cleanSender}\n\nSilakan salin ID ini dan masukkan ke kolom 'phone' di data warga jika nomor biasa tidak terdeteksi.` });
+      }
+
       const resident = residents.find(r => {
         if (!r.phone) return false;
         
@@ -335,9 +340,15 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
 
         // Check if ANY of the numbers match the sender
         const match = dbPhones.some(dbPhone => {
-             return dbPhone === cleanSender || 
-                    dbPhone === senderAsZero || 
-                    dbPhone === senderAs62;
+             // Exact match
+             if (dbPhone === cleanSender || dbPhone === senderAsZero || dbPhone === senderAs62) return true;
+             
+             // Fuzzy match for LIDs (sometimes they have extra digits or suffix)
+             // Check if one contains the other (only if length > 10 to avoid false positives with short numbers)
+             if (cleanSender.length > 10 && dbPhone.length > 10) {
+                 return cleanSender.includes(dbPhone) || dbPhone.includes(cleanSender);
+             }
+             return false;
         });
         
         if (match) {
@@ -348,7 +359,39 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
 
       if (!resident) {
         console.log(`Unregistered number: ${sender}`);
-        return res.json({ reply: 'Maaf, nomor Anda belum terdaftar di sistem RT kami. Silakan hubungi pengurus RT atau daftar melalui aplikasi web.' });
+        
+        // Check if message is a phone number (for verification)
+        const potentialPhone = message.replace(/\D/g, '');
+        if (potentialPhone.length >= 10 && potentialPhone.length <= 15) {
+            // Try to find resident with this phone number
+            const targetResident = residents.find(r => {
+                if (!r.phone) return false;
+                const dbPhones = String(r.phone).split(',').map(p => p.trim().replace(/\D/g, ''));
+                
+                let checkPhone = potentialPhone;
+                if (checkPhone.startsWith('0')) checkPhone = '62' + checkPhone.substring(1);
+                
+                return dbPhones.some(dbPhone => {
+                    let normDb = dbPhone;
+                    if (normDb.startsWith('0')) normDb = '62' + normDb.substring(1);
+                    return normDb === checkPhone;
+                });
+            });
+
+            if (targetResident) {
+                // Update resident phone with new sender ID
+                try {
+                    const newPhoneList = `${targetResident.phone}, ${cleanSender}`;
+                    await sheetsService.updateResidentPhone(targetResident.nik, newPhoneList);
+                    return res.json({ reply: `✅ Terima kasih Bpk/Ibu *${targetResident.name}*. Nomor WhatsApp Anda (${cleanSender}) telah berhasil ditautkan.\n\nSekarang Anda bisa menggunakan layanan bot ini. Ketik *MENU* untuk memulai.` });
+                } catch (err) {
+                    console.error("Failed to update phone:", err);
+                    return res.json({ reply: "Maaf, terjadi kesalahan saat menyimpan data. Silakan coba lagi nanti." });
+                }
+            }
+        }
+
+        return res.json({ reply: `Maaf, nomor WhatsApp ini (${cleanSender}) belum terdaftar.\n\nJika Anda warga RT kami, silakan balas pesan ini dengan mengetik **Nomor HP Anda yang terdaftar** (contoh: 08123456789) untuk verifikasi otomatis.` });
       }
 
       const rtCode = resident.rt || "RT01";
