@@ -56,7 +56,19 @@ export function Reports() {
           : data;
 
         if (role === 'resident' && user) {
-          setReports(filteredData.filter((r: Report) => String(r.residentId) === String(user.id)));
+          setReports(filteredData.filter((r: Report) => {
+            const reportResidentId = String(r.residentId);
+            const userId = String(user.id);
+            const userNik = user.nik ? String(user.nik) : '';
+            
+            // Check if report belongs to user by ID (web) or NIK (wa) or Phone (wa fallback)
+            const userPhones = user.phone ? String(user.phone).split(',').map(p => p.trim().replace(/\D/g, '')) : [];
+            const cleanReportId = reportResidentId.replace(/\D/g, '');
+            
+            return reportResidentId === userId || 
+                   (userNik && reportResidentId === userNik) ||
+                   (cleanReportId.length > 5 && userPhones.some(p => p.includes(cleanReportId) || cleanReportId.includes(p)));
+          }));
         } else {
           setReports(filteredData.reverse());
         }
