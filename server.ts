@@ -508,7 +508,13 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
         
         console.log("Adding new report with image");
         try {
-            await sheetsService.addReport(newReport);
+            const result = await sheetsService.addReport(newReport);
+            console.log("GAS Response (Image Report):", result);
+            
+            if (result && result.error) {
+                throw new Error(result.error);
+            }
+
             return res.json({ reply: `✅ Foto laporan Anda berhasil diterima dan telah masuk ke sistem web pengurus *${rtCode}*.\n\nKetik *STATUS LAPORAN* untuk mengecek perkembangannya nanti.` });
         } catch (err: any) {
             console.error("Failed to add image report:", err);
@@ -535,7 +541,13 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
         
         console.log("Adding new report (text only)");
         try {
-            await sheetsService.addReport(newReport);
+            const result = await sheetsService.addReport(newReport);
+            console.log("GAS Response (Text Report):", result);
+
+            if (result && result.error) {
+                throw new Error(result.error);
+            }
+
             return res.json({ reply: `✅ Laporan Anda berhasil diterima dan telah masuk ke sistem web pengurus *${rtCode}*.\n\nKetik *STATUS LAPORAN* untuk mengecek perkembangannya nanti.` });
         } catch (err: any) {
             console.error("Failed to add text report:", err);

