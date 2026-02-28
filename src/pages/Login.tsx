@@ -80,14 +80,15 @@ export function Login() {
     }
 
     try {
-      if (loginType === 'admin') {
-        // Super Admin Backdoor
-        if (rtCode === 'SUPERADMIN' && password === 'admin123') {
-            login('admin', { name: 'Super Administrator', rtId: 'SUPERADMIN' }, 'SUPERADMIN');
-            navigate('/');
-            return;
-        }
+      // Super Admin Backdoor (Check this FIRST before any API calls)
+      if (loginType === 'admin' && rtCode.trim().toUpperCase() === 'SUPERADMIN' && password === 'admin123') {
+          console.log("Super Admin Login Detected");
+          login('admin', { name: 'Super Administrator', rtId: 'SUPERADMIN' }, 'SUPERADMIN');
+          navigate('/');
+          return;
+      }
 
+      if (loginType === 'admin') {
         // Strict Admin login using Admins sheet
         const res = await fetch('/api/admins');
         if (res.ok) {
