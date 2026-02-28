@@ -4,12 +4,82 @@ import path from "path";
 import fs from "fs";
 import mcache from 'memory-cache';
 import { fileURLToPath } from 'url';
+import PDFDocument from 'pdfkit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
+
+// --- Helper: Generate Surat Pengantar PDF ---
+async function generateSuratPengantarPDF(resident: any, keperluan: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ size: 'A4', margin: 50 });
+        const buffers: any[] = [];
+        doc.on('data', buffers.push.bind(buffers));
+        doc.on('end', () => {
+            const pdfData = Buffer.concat(buffers);
+            resolve(pdfData.toString('base64'));
+        });
+
+        // --- Header ---
+        doc.font('Helvetica-Bold').fontSize(14).text(`RUKUN TETANGGA ${resident.rt} / RUKUN WARGA ${resident.rw}`, { align: 'center' });
+        doc.text('KELURAHAN [NAMA KELURAHAN]', { align: 'center' });
+        doc.text('KECAMATAN [NAMA KECAMATAN]', { align: 'center' });
+        doc.moveDown(0.5);
+        doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+        doc.moveDown(1);
+
+        // --- Title ---
+        doc.font('Helvetica-Bold').fontSize(16).text('SURAT PENGANTAR', { align: 'center', underline: true });
+        doc.fontSize(12).text(`Nomor: .../${resident.rt}/${new Date().getFullYear()}`, { align: 'center' });
+        doc.moveDown(2);
+
+        // --- Body ---
+        doc.font('Helvetica').fontSize(12).text('Yang bertanda tangan di bawah ini Ketua RT ' + resident.rt + ' RW ' + resident.rw + ', menerangkan bahwa:', { align: 'justify' });
+        doc.moveDown(1);
+
+        const startX = 70;
+        const labelWidth = 120;
+        const valueX = startX + labelWidth;
+
+        function addField(label: string, value: string) {
+            const y = doc.y;
+            doc.text(label, startX, y);
+            doc.text(':', startX + labelWidth - 10, y);
+            doc.text(value, valueX, y);
+            doc.moveDown(0.5);
+        }
+
+        addField('Nama Lengkap', resident.name);
+        addField('NIK', resident.nik);
+        addField('Jenis Kelamin', resident.gender);
+        addField('Status Perkawinan', resident.maritalStatus);
+        addField('Pekerjaan', '-'); // Placeholder if not in DB
+        addField('Alamat', resident.address);
+
+        doc.moveDown(1);
+        doc.text(`Orang tersebut di atas adalah benar-benar warga kami yang berdomisili di lingkungan RT ${resident.rt} RW ${resident.rw}.`, { align: 'justify' });
+        doc.moveDown(0.5);
+        doc.text(`Surat pengantar ini diberikan untuk keperluan:`, { align: 'justify' });
+        doc.font('Helvetica-Bold').text(keperluan, { indent: 20 });
+        doc.font('Helvetica').moveDown(1);
+        doc.text('Demikian surat pengantar ini dibuat untuk dapat dipergunakan sebagaimana mestinya.', { align: 'justify' });
+        
+        // --- Footer (Signature) ---
+        doc.moveDown(3);
+        const date = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+        
+        const signatureX = 350;
+        doc.text(`Jakarta, ${date}`, signatureX, doc.y);
+        doc.text(`Ketua RT ${resident.rt}`, signatureX, doc.y + 15);
+        doc.moveDown(4);
+        doc.text('( .................................... )', signatureX, doc.y);
+
+        doc.end();
+    });
+}
 
 // --- Google Sheets API Routes ---
 
@@ -224,7 +294,7 @@ app.use(express.json());
       }
 
       const msgUpper = message.trim().toUpperCase();
-      console.log(`Processing message from ${sender}: ${msgUpper}`);
+      console.log(`Processing message from ${sender}: '${msgUpper}'`);
       
       const residents = await sheetsService.getResidents() as any[];
       
@@ -285,7 +355,35 @@ app.use(express.json());
       console.log(`Resident found: ${resident.name} (${rtCode})`);
 
       if (msgUpper === 'MENU' || msgUpper === 'PING') {
-        return res.json({ reply: `Halo Bpk/Ibu *${resident.name}* dari *${rtCode}*.\n\nBerikut adalah layanan WhatsApp RT:\n1. Ketik *LAPOR [Isi Laporan]* untuk melaporkan keluhan/masalah.\n2. Ketik *STATUS LAPORAN* untuk melihat status laporan terakhir Anda.\n3. Ketik *INFO* untuk melihat pengumuman terbaru.` });
+        return res.json({ reply: `Halo Bpk/Ibu *${resident.name}* dari *${rtCode}*.\n\nBerikut adalah layanan WhatsApp RT:\n1. Ketik *LAPOR [Isi Laporan]* untuk melaporkan keluhan/masalah.\n2. Ketik *STATUS LAPORAN* untuk melihat status laporan terakhir Anda.\n3. Ketik *SURAT [Keperluan]* untuk membuat Surat Pengantar otomatis.\n4. Ketik *INFO* untuk melihat pengumuman terbaru.` });
+      }
+
+      // Handle SURAT command (more robust matching)
+      if (msgUpper.startsWith('SURAT')) {
+        // Remove 'SURAT' and trim any leading non-alphanumeric chars (like space, newline, :)
+        let keperluan = message.substring(5).trim();
+        // Remove potential separator like ':' if user typed 'SURAT: ...'
+        if (keperluan.startsWith(':')) keperluan = keperluan.substring(1).trim();
+
+        if (keperluan.length < 3) {
+            return res.json({ reply: 'Mohon jelaskan keperluan surat pengantar. Contoh: SURAT Pembuatan KTP' });
+        }
+
+        try {
+            console.log(`Generating PDF for ${resident.name}, keperluan: ${keperluan}`);
+            const pdfBase64 = await generateSuratPengantarPDF(resident, keperluan);
+            const fileName = `Surat_Pengantar_${resident.name.replace(/\s+/g, '_')}.pdf`;
+            
+            return res.json({
+                reply: `✅ Surat Pengantar Anda telah berhasil dibuat.\n\nSilakan unduh dokumen berikut dan cetak untuk ditandatangani oleh Ketua RT/RW.`,
+                document: pdfBase64,
+                fileName: fileName,
+                mimeType: 'application/pdf'
+            });
+        } catch (error: any) {
+            console.error('Error generating PDF:', error);
+            return res.json({ reply: 'Maaf, terjadi kesalahan saat membuat surat pengantar. Silakan coba lagi nanti.' });
+        }
       }
 
       if (msgUpper.startsWith('LAPOR ')) {
