@@ -253,30 +253,25 @@ app.use(express.json());
 
       const resident = residents.find(r => {
         if (!r.phone) return false;
-        // Normalize DB phone: remove all non-digits, trim whitespace
-        const dbPhoneRaw = String(r.phone).trim();
-        const dbPhone = dbPhoneRaw.replace(/\D/g, '');
         
-        // Standardize DB phone to 62 format for comparison
-        let dbPhone62 = dbPhone;
-        if (dbPhone.startsWith('0')) {
-            dbPhone62 = '62' + dbPhone.substring(1);
-        }
+        // Support multiple numbers separated by comma
+        const dbPhones = String(r.phone).split(',').map(p => {
+            const raw = p.trim();
+            const clean = raw.replace(/\D/g, '');
+            // Standardize to 62 format
+            if (clean.startsWith('0')) return '62' + clean.substring(1);
+            return clean;
+        });
 
-        // Check exact match on 62 format OR local format
-        const match = dbPhone === cleanSender || 
-                      dbPhone === senderAsZero || 
-                      dbPhone === senderAs62 ||
-                      dbPhone62 === cleanSender ||
-                      dbPhone62 === senderAs62;
+        // Check if ANY of the numbers match the sender
+        const match = dbPhones.some(dbPhone => {
+             return dbPhone === cleanSender || 
+                    dbPhone === senderAsZero || 
+                    dbPhone === senderAs62;
+        });
         
-        // Debugging log for specific number
-        if (dbPhone.includes('81362789535')) {
-             console.log(`Checking DB Phone: '${r.phone}' -> Cleaned: '${dbPhone}' (62: ${dbPhone62}) vs Sender: '${cleanSender}'`);
-        }
-
         if (match) {
-            console.log(`Match Found! DB Phone: ${r.phone} (${dbPhone}) matches sender.`);
+            console.log(`Match Found! Resident: ${r.name}`);
         }
         return match;
       });
