@@ -309,8 +309,8 @@ export function Settings() {
                 Bot WhatsApp memungkinkan warga untuk mengirim laporan dan mengecek status langsung melalui WhatsApp.
               </p>
               
-              {/* Show Start button if closed, error, or no QR yet */}
-              {(waStatus.status === 'close' || waStatus.status === 'error' || (waStatus.status === 'connecting' && !waStatus.qr)) && (
+              {/* Show Start button if NOT open and NO QR yet */}
+              {waStatus.status !== 'open' && !waStatus.qr && (
                 <button 
                   onClick={handleStartWa}
                   disabled={waStatus.status === 'connecting' || waStatus.status === 'initializing'}
