@@ -5,7 +5,7 @@ import { Announcement } from "@/types";
 import { useAuth } from "@/context/AuthContext";
 
 export function Announcements() {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const [announcementsList, setAnnouncementsList] = useState<Announcement[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
