@@ -221,20 +221,6 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
     res.json({ message: "URL VPS WhatsApp berhasil disimpan sementara. Untuk permanen, atur VITE_VPS_URL di Vercel." });
   });
 
-  app.get("/api/whatsapp/status", async (req, res) => {
-    const targetUrl = currentVpsWaUrl || process.env.VITE_VPS_URL;
-    if (!targetUrl) return res.json({ status: 'close', qr: null });
-    try {
-      const baseUrl = targetUrl.replace(/\/$/, '');
-      // Panggil endpoint VPS
-      const response = await fetch(`${baseUrl}/status`);
-      const data = await response.json();
-      res.json(data);
-    } catch (error: any) {
-      res.json({ status: 'error', qr: null, message: `Gagal terhubung ke VPS: ${error.message}` });
-    }
-  });
-
   app.post("/api/whatsapp/start", async (req, res) => {
     const targetUrl = currentVpsWaUrl || process.env.VITE_VPS_URL;
     console.log(`[API] Starting WhatsApp Bot. Target URL: ${targetUrl}`);
@@ -246,11 +232,35 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
 
     try {
       const baseUrl = targetUrl.replace(/\/$/, '');
-      console.log(`[API] Sending POST request to: ${baseUrl}/start`);
       
-      const response = await fetch(`${baseUrl}/start`, { 
+      // Determine unique session ID for this deployment
+      // Priority: Env Var > Hostname > Default 'session_default'
+      let sessionId = process.env.WA_SESSION_ID;
+      if (!sessionId && req.headers.host) {
+          sessionId = req.headers.host.replace(/[^a-zA-Z0-9]/g, '_'); // Sanitize hostname
+      }
+      if (!sessionId) sessionId = 'session_default';
+
+      // Determine this app's webhook URL
+      // Priority: Env Var > Constructed from Host header
+      let webhookUrl = process.env.APP_URL;
+      if (!webhookUrl && req.headers.host) {
+          const protocol = req.headers.host.includes('localhost') ? 'http' : 'https';
+          webhookUrl = `${protocol}://${req.headers.host}`;
+      }
+      webhookUrl = `${webhookUrl}/api/whatsapp/webhook`;
+
+      console.log(`[API] Initializing session: ${sessionId}`);
+      console.log(`[API] Webhook URL: ${webhookUrl}`);
+      console.log(`[API] Sending POST request to: ${baseUrl}/session/start`);
+      
+      const response = await fetch(`${baseUrl}/session/start`, { 
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+              sessionId: sessionId,
+              webhookUrl: webhookUrl
+          })
       });
       
       console.log(`[API] VPS Response Status: ${response.status}`);
@@ -270,12 +280,55 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
     }
   });
 
+  app.get("/api/whatsapp/status", async (req, res) => {
+    const targetUrl = currentVpsWaUrl || process.env.VITE_VPS_URL;
+    if (!targetUrl) return res.json({ status: 'close', qr: null });
+    
+    try {
+      const baseUrl = targetUrl.replace(/\/$/, '');
+      
+      // Determine unique session ID (same logic as start)
+      let sessionId = process.env.WA_SESSION_ID;
+      if (!sessionId && req.headers.host) {
+          sessionId = req.headers.host.replace(/[^a-zA-Z0-9]/g, '_');
+      }
+      if (!sessionId) sessionId = 'session_default';
+
+      // Call session-specific status endpoint
+      const response = await fetch(`${baseUrl}/session/${sessionId}/status`);
+      
+      if (!response.ok) {
+          // Fallback to global status if session endpoint fails (backward compatibility)
+          const fallbackResponse = await fetch(`${baseUrl}/status`);
+          if (fallbackResponse.ok) {
+              const data = await fallbackResponse.json();
+              return res.json(data);
+          }
+          throw new Error(`VPS returned ${response.status}`);
+      }
+
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.json({ status: 'error', qr: null, message: `Gagal terhubung ke VPS: ${error.message}` });
+    }
+  });
+
   app.post("/api/whatsapp/logout", async (req, res) => {
     const targetUrl = currentVpsWaUrl || process.env.VITE_VPS_URL;
     if (!targetUrl) return res.status(400).json({ error: 'URL VPS belum diatur' });
+    
     try {
       const baseUrl = targetUrl.replace(/\/$/, '');
-      const response = await fetch(`${baseUrl}/logout`, { method: 'POST' });
+      
+      // Determine unique session ID
+      let sessionId = process.env.WA_SESSION_ID;
+      if (!sessionId && req.headers.host) {
+          sessionId = req.headers.host.replace(/[^a-zA-Z0-9]/g, '_');
+      }
+      if (!sessionId) sessionId = 'session_default';
+
+      const response = await fetch(`${baseUrl}/session/${sessionId}/logout`, { method: 'POST' });
       const data = await response.json();
       res.json(data);
     } catch (error: any) {
