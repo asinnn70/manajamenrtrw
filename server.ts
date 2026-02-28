@@ -431,18 +431,22 @@ async function generateSuratPengantarPDF(resident: any, keperluan: string): Prom
 
       if (msgUpper.startsWith('LAPOR ')) {
         const reportContent = message.substring(6).trim();
-        if (reportContent.length < 5) return res.json({ reply: 'Laporan terlalu singkat. Mohon jelaskan lebih detail.' });
+        // Allow shorter text if image is present
+        if (reportContent.length < 5 && !req.body.image) {
+            return res.json({ reply: 'Laporan terlalu singkat. Mohon jelaskan lebih detail.' });
+        }
 
         const newReport = {
           residentId: resident.nik || sender,
           residentName: resident.name,
           title: "[WA] Laporan Warga",
-          description: reportContent,
+          description: reportContent || "[Melampirkan Foto]",
           date: new Date().toISOString().split('T')[0],
           status: "Menunggu",
-          rt: rtCode
+          rt: rtCode,
+          image: req.body.image || "" // Pass image base64 if available
         };
-        console.log("Adding new report:", newReport);
+        console.log("Adding new report with image:", !!newReport.image);
         await sheetsService.addReport(newReport);
         console.log("Report added successfully");
         return res.json({ reply: `✅ Laporan Anda berhasil diterima dan telah masuk ke sistem web pengurus *${rtCode}*.\n\nKetik *STATUS LAPORAN* untuk mengecek perkembangannya nanti.` });

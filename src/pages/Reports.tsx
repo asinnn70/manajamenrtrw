@@ -11,25 +11,43 @@ interface Report {
   description: string;
   date: string;
   status: string;
+  image?: string; // Add image property
 }
 
 export function Reports() {
   const { role, user } = useAuth();
   const [reports, setReports] = useState<Report[]>([]);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState("Semua");
-  const [loading, setLoading] = useState(true);
+  // ... (rest of the component)
 
-  // Form State
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-
-  useEffect(() => {
-    fetchReports();
-  }, [role, user]);
+  // ... inside Detail Modal ...
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-700 mb-2">Deskripsi Laporan:</h4>
+                    <div className="bg-slate-50 p-4 rounded-xl text-slate-700 text-sm leading-relaxed border border-slate-100 whitespace-pre-wrap">
+                      {selectedReport.description}
+                    </div>
+                    
+                    {selectedReport.image && (
+                      <div className="mt-4">
+                        <h4 className="text-sm font-medium text-slate-700 mb-2">Lampiran Foto:</h4>
+                        <div className="rounded-xl overflow-hidden border border-slate-200">
+                          <img 
+                            src={selectedReport.image} 
+                            alt="Lampiran Laporan" 
+                            className="w-full h-auto object-contain max-h-96 bg-slate-100"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                        <a 
+                          href={selectedReport.image} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-xs text-indigo-600 hover:text-indigo-800 mt-2 inline-block font-medium"
+                        >
+                          Buka gambar ukuran penuh
+                        </a>
+                      </div>
+                    )}
+                  </div>
 
   const fetchReports = async () => {
     try {
